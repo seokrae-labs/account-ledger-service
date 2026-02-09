@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: account-ledger-service
+
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/ledger
+    username: ledger
+    password: ledger123
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.labs.ledger: DEBUG
+    io.r2dbc.postgresql: DEBUG
