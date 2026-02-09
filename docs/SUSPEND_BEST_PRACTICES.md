@@ -5,11 +5,12 @@
 > **관련 Issue**: [#20](https://github.com/seokrae-labs/account-ledger-service/issues/20)
 
 ## 📋 목차
-1. [프로젝트 Suspend 현황 요약](#1-프로젝트-suspend-현황-요약)
-2. [아키텍처별 분석](#2-아키텍처별-분석)
-3. [Best Practice 체크리스트](#3-best-practice-체크리스트)
-4. [Spring WebFlux + Coroutine Best Practice](#4-spring-webflux--coroutine-best-practice-총정리)
-5. [결론](#5-결론)
+1. [아키텍처 다이어그램](#1-아키텍처-다이어그램)
+2. [프로젝트 Suspend 현황 요약](#2-프로젝트-suspend-현황-요약)
+3. [아키텍처별 분석](#3-아키텍처별-분석)
+4. [Best Practice 체크리스트](#4-best-practice-체크리스트)
+5. [Spring WebFlux + Coroutine Best Practice](#5-spring-webflux--coroutine-best-practice-총정리)
+6. [결론](#6-결론)
 
 ---
 
@@ -19,7 +20,236 @@
 
 ---
 
-## 1. 프로젝트 Suspend 현황 요약
+## 1. 아키텍처 다이어그램
+
+### 1.1 Hexagonal Architecture with Suspend Layers
+
+```mermaid
+graph TB
+    subgraph "Web Layer"
+        Controller["TransferController<br/>(suspend fun)"]
+    end
+
+    subgraph "Application Layer"
+        UseCase["TransferService<br/>(suspend fun)"]
+    end
+
+    subgraph "Domain Layer"
+        Model["Account / Transfer<br/>(Pure Functions)"]
+        Port1["Input Port<br/>(suspend interface)"]
+        Port2["Output Port<br/>(suspend interface)"]
+    end
+
+    subgraph "Infrastructure Layer"
+        Adapter["Persistence Adapter<br/>(suspend fun)"]
+        Repo["R2DBC Repository<br/>(suspend fun)"]
+        TxExecutor["TransactionExecutor<br/>(TransactionalOperator)"]
+    end
+
+    subgraph "Database"
+        DB[("PostgreSQL<br/>(R2DBC)")]
+    end
+
+    Controller -->|suspend| UseCase
+    UseCase -->|suspend| Port1
+    UseCase -.->|pure call| Model
+    Port1 -->|implements| UseCase
+    UseCase -->|suspend| Port2
+    Port2 -->|implements| Adapter
+    Adapter -->|suspend| Repo
+    Adapter -->|suspend| TxExecutor
+    Repo -->|non-blocking| DB
+
+    style Model fill:#90EE90
+    style Port1 fill:#87CEEB
+    style Port2 fill:#87CEEB
+    style Controller fill:#FFD700
+    style UseCase fill:#FFD700
+    style Adapter fill:#FFA500
+    style Repo fill:#FFA500
+    style TxExecutor fill:#FF6B6B
+```
+
+**핵심 포인트**:
+- 🟢 **Domain Models**: Pure functions (코루틴-free)
+- 🔵 **Ports**: suspend interface (도메인 경계)
+- 🟡 **Application/Web**: suspend fun
+- 🟠 **Infrastructure**: suspend + Flow (내부 변환)
+- 🔴 **Transaction**: Programmatic (TransactionalOperator)
+
+---
+
+### 1.2 Transfer Call Chain with Transaction Boundary
+
+```mermaid
+sequenceDiagram
+    participant C as Controller<br/>(suspend)
+    participant S as Service<br/>(suspend)
+    participant TR as TransferRepo<br/>(suspend)
+    participant TX as TxExecutor<br/>(suspend)
+    participant AR as AccountRepo<br/>(suspend)
+    participant D as Domain<br/>(pure)
+    participant DB as PostgreSQL<br/>(R2DBC)
+
+    C->>+S: transfer(request)
+
+    Note over S,TR: Fast Path (트랜잭션 밖)
+    S->>+TR: findByIdempotencyKey(key)
+    TR->>+DB: SELECT (no lock)
+    DB-->>-TR: existing or null
+    TR-->>-S: Transfer?
+
+    alt Idempotent Response
+        S-->>C: return existing
+    end
+
+    Note over S,DB: Transaction Boundary Start
+    S->>+TX: execute { ... }
+    TX->>TX: transactionalOperator<br/>.executeAndAwait
+
+    Note over TX,DB: Double-Check (트랜잭션 안)
+    TX->>+TR: findByIdempotencyKey(key)
+    TR->>+DB: SELECT FOR UPDATE
+    DB-->>-TR: null (confirmed)
+    TR-->>-TX: null
+
+    TX->>+TR: save(pending)
+    TR->>+DB: INSERT Transfer
+    DB-->>-TR: saved
+    TR-->>-TX: Transfer
+
+    TX->>+AR: findByIdsForUpdate([from, to])
+    AR->>+DB: SELECT ... FOR UPDATE<br/>ORDER BY id
+    DB-->>-AR: [fromAccount, toAccount]
+    AR-->>-TX: List<Account>
+
+    Note over TX,D: Domain Logic (순수 함수)
+    TX->>+D: fromAccount.withdraw(amount)
+    D-->>-TX: debitedAccount
+    TX->>+D: toAccount.deposit(amount)
+    D-->>-TX: creditedAccount
+
+    TX->>+AR: save(debitedAccount)
+    AR->>+DB: UPDATE Account
+    DB-->>-AR: saved
+    AR-->>-TX: Account
+
+    TX->>+AR: save(creditedAccount)
+    AR->>+DB: UPDATE Account
+    DB-->>-AR: saved
+    AR-->>-TX: Account
+
+    TX->>+TR: save(completed)
+    TR->>+DB: UPDATE Transfer
+    DB-->>-TR: saved
+    TR-->>-TX: Transfer
+
+    TX-->>-S: Transfer (committed)
+    Note over S,DB: Transaction Boundary End
+
+    S-->>-C: TransferResponse
+```
+
+**핵심 패턴**:
+1. ⚡ **Fast Path**: 트랜잭션 밖에서 중복 체크
+2. 🔒 **Double-Check**: 트랜잭션 안에서 재확인 (race condition 방지)
+3. 🔐 **Deadlock Prevention**: 계좌 ID 정렬 후 FOR UPDATE
+4. 🟢 **Domain Logic**: withdraw/deposit은 순수 함수
+5. 💾 **Atomic Commit**: 모든 변경사항 일괄 커밋
+
+---
+
+### 1.3 Flow to List Conversion Point
+
+```mermaid
+graph LR
+    subgraph "R2DBC Repository Layer"
+        R1["findByAccountId()<br/>→ Flow&lt;Entity&gt;"]
+    end
+
+    subgraph "Adapter Layer (변환 지점)"
+        A1["Flow&lt;Entity&gt;"]
+        A2[".map { toDomain(it) }"]
+        A3[".toList()"]
+        A4["List&lt;Domain&gt;"]
+    end
+
+    subgraph "Port Interface (Domain Boundary)"
+        P1["suspend fun<br/>findByAccountId()<br/>: List&lt;LedgerEntry&gt;"]
+    end
+
+    subgraph "Use Case"
+        U1["List&lt;LedgerEntry&gt;"]
+    end
+
+    R1 --> A1
+    A1 --> A2
+    A2 --> A3
+    A3 --> A4
+    A4 --> P1
+    P1 --> U1
+
+    style R1 fill:#FFA500
+    style A2 fill:#FFD700
+    style A3 fill:#FF6B6B
+    style P1 fill:#87CEEB
+    style U1 fill:#90EE90
+```
+
+**Why List over Flow?**
+- ✅ 포트 인터페이스 단순화
+- ✅ 도메인은 컬렉션 타입만 이해
+- ✅ 트랜잭션 범위 명확화
+- 🔸 스트리밍 필요 시에만 Flow를 포트에 노출
+
+---
+
+### 1.4 Best Practice Rules Overview
+
+```mermaid
+mindmap
+  root((Suspend<br/>Best<br/>Practices))
+    Architecture
+      도메인은 코루틴을 모른다
+      Hexagonal 원칙 준수
+      Clean Architecture
+
+    Reactor
+      Mono/Flux 미노출
+      CoroutineCrudRepository
+      100% Coroutine-Native
+
+    Transaction
+      TransactionalOperator
+      @Transactional 회피
+      명시적 경계
+      Fast Path 최적화
+
+    Performance
+      Dispatcher 미명시
+      R2DBC non-blocking
+      불필요한 스레드 전환 없음
+      runBlocking 금지
+
+    Data Flow
+      Flow는 인프라 격리
+      포트는 List 반환
+      suspend + 도메인 모델
+```
+
+**8가지 핵심 규칙**:
+1. 🏛️ **도메인은 코루틴을 모른다**
+2. 🚫 **Reactor 타입을 코드 표면에 노출하지 않는다**
+3. 📦 **CoroutineCrudRepository를 사용한다**
+4. 💉 **@Transactional 대신 TransactionalOperator를 사용한다**
+5. ⚡ **Dispatcher를 명시하지 않는다**
+6. 🌊 **Flow는 인프라 경계에서 수집한다**
+7. 🚷 **runBlocking을 사용하지 않는다**
+8. 🎯 **트랜잭션 범위를 최소화한다**
+
+---
+
+## 2. 프로젝트 Suspend 현황 요약
 
 ### 레이어별 Suspend 사용 현황
 
@@ -43,9 +273,9 @@
 
 ---
 
-## 2. 아키텍처별 분석
+## 3. 아키텍처별 분석
 
-### 2.1 Domain Layer - Coroutine-Free (✅ EXCELLENT)
+### 3.1 Domain Layer - Coroutine-Free (✅ EXCELLENT)
 
 ```kotlin
 // domain/Account.kt
@@ -74,7 +304,7 @@ data class Account(
 
 ---
 
-### 2.2 Port Interfaces - All Suspend, No Flow (✅ EXCELLENT)
+### 3.2 Port Interfaces - All Suspend, No Flow (✅ EXCELLENT)
 
 #### Input Port (Use Case)
 ```kotlin
@@ -106,7 +336,7 @@ interface TransactionExecutor {
 
 ---
 
-### 2.3 Transaction Management - Programmatic (✅ EXCELLENT)
+### 3.3 Transaction Management - Programmatic (✅ EXCELLENT)
 
 #### Port (Domain Layer)
 ```kotlin
@@ -140,7 +370,7 @@ class R2dbcTransactionExecutor(
 
 ---
 
-### 2.4 Flow → List 변환 (Adapter 경계) (✅ GOOD)
+### 3.4 Flow → List 변환 (Adapter 경계) (✅ GOOD)
 
 #### R2DBC Repository - Flow 반환
 ```kotlin
@@ -172,7 +402,7 @@ override suspend fun findByAccountId(accountId: Long): List<LedgerEntry> {
 
 ---
 
-### 2.5 Call Chain 추적 (Transfer - 가장 복잡한 케이스)
+### 3.5 Call Chain 추적 (Transfer - 가장 복잡한 케이스)
 
 ```
 TransferController.transfer()                    [suspend]
@@ -199,7 +429,7 @@ TransferController.transfer()                    [suspend]
 
 ---
 
-### 2.6 Dispatcher 설정
+### 3.6 Dispatcher 설정
 
 **명시적 Dispatcher 설정 없음** - 전체 코드에서 `Dispatchers.IO`, `withContext`, `CoroutineScope` 사용 없음.
 
@@ -225,7 +455,7 @@ suspend fun readFile(path: String) = withContext(Dispatchers.IO) {
 
 ---
 
-## 3. Best Practice 체크리스트
+## 4. Best Practice 체크리스트
 
 ### ✅ 잘 지키고 있는 것
 
@@ -258,7 +488,7 @@ suspend fun readFile(path: String) = withContext(Dispatchers.IO) {
 
 ---
 
-## 4. Spring WebFlux + Coroutine Best Practice 총정리
+## 5. Spring WebFlux + Coroutine Best Practice 총정리
 
 ### Rule 1: 도메인은 코루틴을 모른다 🏛️
 
@@ -432,7 +662,7 @@ return transactionExecutor.execute {
 
 ---
 
-## 5. 결론
+## 6. 결론
 
 ### 🎯 프로젝트 평가
 
