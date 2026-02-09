@@ -5,12 +5,13 @@
 > **관련 Issue**: [#20](https://github.com/seokrae-labs/account-ledger-service/issues/20)
 
 ## 📋 목차
-1. [아키텍처 다이어그램](#1-아키텍처-다이어그램)
-2. [프로젝트 Suspend 현황 요약](#2-프로젝트-suspend-현황-요약)
-3. [아키텍처별 분석](#3-아키텍처별-분석)
-4. [Best Practice 체크리스트](#4-best-practice-체크리스트)
-5. [Spring WebFlux + Coroutine Best Practice](#5-spring-webflux--coroutine-best-practice-총정리)
-6. [결론](#6-결론)
+1. [기본 개념](#1-기본-개념)
+2. [아키텍처 다이어그램](#2-아키텍처-다이어그램)
+3. [프로젝트 Suspend 현황 요약](#3-프로젝트-suspend-현황-요약)
+4. [아키텍처별 분석](#4-아키텍처별-분석)
+5. [Best Practice 체크리스트](#5-best-practice-체크리스트)
+6. [Spring WebFlux + Coroutine Best Practice](#6-spring-webflux--coroutine-best-practice-총정리)
+7. [결론](#7-결론)
 
 ---
 
@@ -20,9 +21,95 @@
 
 ---
 
-## 1. 아키텍처 다이어그램
+## 1. 기본 개념
 
-### 1.1 Hexagonal Architecture with Suspend Layers
+### suspend 함수란?
+
+`suspend`는 Kotlin Coroutines의 핵심 키워드로, **일시 중단 가능한 함수**를 의미합니다.
+
+#### 일반 함수 vs Suspend 함수
+
+```kotlin
+// ❌ 일반 함수 (Blocking)
+fun findById(id: Long): Account {
+    // DB 조회하는 동안 스레드를 점유하고 대기
+    return jdbcTemplate.queryForObject(...)  // 스레드 블로킹
+}
+
+// ✅ Suspend 함수 (Non-Blocking)
+suspend fun findById(id: Long): Account {
+    // DB 조회하는 동안 스레드를 반납하고 다른 작업 수행
+    return repository.findById(id)  // 코루틴 일시 중단
+}
+```
+
+#### 핵심 차이점
+
+| 구분 | 일반 함수 (Blocking) | Suspend 함수 (Non-Blocking) |
+|------|---------------------|---------------------------|
+| **스레드 사용** | I/O 대기 중 스레드 점유 | I/O 대기 중 스레드 반납 |
+| **동시성** | 스레드 수만큼 제한 | 수만 개 동시 요청 처리 가능 |
+| **성능** | 스레드 풀 고갈 가능 | 높은 처리량 |
+| **호출 방법** | 어디서나 호출 가능 | suspend 함수 내에서만 호출 |
+
+#### 실무 예시: 이체 처리
+
+```kotlin
+// Blocking 방식 (전통적인 JDBC)
+@Transactional
+fun transfer(from: Long, to: Long, amount: BigDecimal): Transfer {
+    val fromAccount = accountRepository.findById(from)  // 스레드 대기
+    val toAccount = accountRepository.findById(to)      // 스레드 대기
+
+    fromAccount.withdraw(amount)
+    toAccount.deposit(amount)
+
+    accountRepository.save(fromAccount)  // 스레드 대기
+    accountRepository.save(toAccount)    // 스레드 대기
+
+    return transferRepository.save(...)  // 스레드 대기
+}
+// ⚠️ 문제: 5번의 DB I/O 동안 스레드가 계속 점유됨
+
+// Non-Blocking 방식 (R2DBC + Coroutines)
+suspend fun transfer(from: Long, to: Long, amount: BigDecimal): Transfer {
+    val fromAccount = accountRepository.findById(from)  // 일시 중단
+    val toAccount = accountRepository.findById(to)      // 일시 중단
+
+    fromAccount.withdraw(amount)
+    toAccount.deposit(amount)
+
+    accountRepository.save(fromAccount)  // 일시 중단
+    accountRepository.save(toAccount)    // 일시 중단
+
+    return transferRepository.save(...)  // 일시 중단
+}
+// ✅ 장점: 5번의 DB I/O 동안 스레드를 반납하여 다른 요청 처리
+```
+
+#### 왜 Suspend를 사용하는가?
+
+1. **높은 처리량**: 적은 스레드로 많은 요청 처리
+2. **확장성**: I/O 대기 시간에 스레드를 재활용
+3. **자원 효율**: 스레드 풀 크기를 줄여도 성능 유지
+4. **자연스러운 코드**: 동기 코드처럼 작성하면서 비동기 이점
+
+---
+
+## 2. 아키텍처 다이어그램
+
+### 2.1 Hexagonal Architecture with Suspend Layers
+
+**이 다이어그램이 보여주는 것:**
+
+이 다이어그램은 **Hexagonal Architecture(육각형 아키텍처)** 에서 각 레이어가 어떻게 suspend 함수를 사용하는지 보여줍니다.
+
+- **도메인 레이어(중심)**: 순수 함수, suspend 없음 (비즈니스 로직은 I/O와 무관)
+- **포트 인터페이스**: suspend로 I/O 경계 정의
+- **외부 레이어**: suspend로 실제 I/O 수행
+
+**핵심 메시지:**
+> "도메인은 I/O를 모르고, 포트가 suspend로 I/O 경계를 추상화한다"
 
 ```mermaid
 graph TB
@@ -79,7 +166,20 @@ graph TB
 
 ---
 
-### 1.2 Transfer Call Chain with Transaction Boundary
+### 2.2 Transfer Call Chain with Transaction Boundary
+
+**이 다이어그램이 보여주는 것:**
+
+이 시퀀스 다이어그램은 **이체 요청의 전체 흐름**을 시간 순서대로 보여줍니다.
+
+- **Fast Path (트랜잭션 밖)**: 중복 요청 빠른 응답 (성능 최적화)
+- **Transaction Boundary (경계)**: 어디서 트랜잭션이 시작/끝나는지 명확히 표시
+- **Double-Check**: 트랜잭션 안에서 다시 확인 (race condition 방지)
+- **Deadlock Prevention**: 계좌 ID 순서로 잠금 (교착상태 방지)
+- **Domain Logic**: 순수 함수 호출 (suspend 아님)
+
+**핵심 메시지:**
+> "suspend 함수 체인을 통해 비동기 흐름을 동기 코드처럼 표현하면서, 트랜잭션 경계와 성능 최적화를 명확히 구분한다"
 
 ```mermaid
 sequenceDiagram
@@ -159,7 +259,22 @@ sequenceDiagram
 
 ---
 
-### 1.3 Flow to List Conversion Point
+### 2.3 Flow to List Conversion Point
+
+**이 다이어그램이 보여주는 것:**
+
+이 다이어그램은 **Kotlin Flow를 어디서 List로 변환하는지** 보여줍니다.
+
+- **R2DBC Repository**: 데이터를 Flow로 반환 (스트림)
+- **Adapter (변환 지점)**: `.toList()`로 Flow → List 변환
+- **Port Interface**: 도메인은 List만 이해 (Flow를 모름)
+
+**핵심 메시지:**
+> "Flow는 인프라 레이어에 격리하고, 도메인 경계(Port)는 익숙한 컬렉션 타입(List)으로 추상화한다"
+
+**왜 List로 변환하는가?**
+- 도메인 로직은 전체 데이터를 필요로 함 (예: 계좌 거래 내역 전체 조회)
+- 스트리밍이 필요한 경우(수백만 건)에만 Flow를 포트까지 노출
 
 ```mermaid
 graph LR
@@ -204,7 +319,20 @@ graph LR
 
 ---
 
-### 1.4 Best Practice Rules Overview
+### 2.4 Best Practice Rules Overview
+
+**이 다이어그램이 보여주는 것:**
+
+이 마인드맵은 **8가지 Suspend Best Practice 규칙**을 5개 카테고리로 분류하여 보여줍니다.
+
+- **Architecture**: 아키텍처 설계 원칙 (도메인 분리, Clean Architecture)
+- **Reactor**: Reactor 타입 처리 방법 (Mono/Flux 숨김)
+- **Transaction**: 트랜잭션 관리 전략 (TransactionalOperator 사용)
+- **Performance**: 성능 최적화 (Dispatcher 최소화)
+- **Data Flow**: 데이터 흐름 제어 (Flow 격리)
+
+**핵심 메시지:**
+> "Suspend 함수를 올바르게 사용하려면 아키텍처, 트랜잭션, 성능, 데이터 흐름 전반에 걸친 종합적 이해가 필요하다"
 
 ```mermaid
 mindmap
@@ -249,7 +377,7 @@ mindmap
 
 ---
 
-## 2. 프로젝트 Suspend 현황 요약
+## 3. 프로젝트 Suspend 현황 요약
 
 ### 레이어별 Suspend 사용 현황
 
@@ -273,9 +401,9 @@ mindmap
 
 ---
 
-## 3. 아키텍처별 분석
+## 4. 아키텍처별 분석
 
-### 3.1 Domain Layer - Coroutine-Free (✅ EXCELLENT)
+### 4.1 Domain Layer - Coroutine-Free (✅ EXCELLENT)
 
 ```kotlin
 // domain/Account.kt
@@ -304,7 +432,7 @@ data class Account(
 
 ---
 
-### 3.2 Port Interfaces - All Suspend, No Flow (✅ EXCELLENT)
+### 4.2 Port Interfaces - All Suspend, No Flow (✅ EXCELLENT)
 
 #### Input Port (Use Case)
 ```kotlin
@@ -336,7 +464,7 @@ interface TransactionExecutor {
 
 ---
 
-### 3.3 Transaction Management - Programmatic (✅ EXCELLENT)
+### 4.3 Transaction Management - Programmatic (✅ EXCELLENT)
 
 #### Port (Domain Layer)
 ```kotlin
@@ -370,7 +498,7 @@ class R2dbcTransactionExecutor(
 
 ---
 
-### 3.4 Flow → List 변환 (Adapter 경계) (✅ GOOD)
+### 4.4 Flow → List 변환 (Adapter 경계) (✅ GOOD)
 
 #### R2DBC Repository - Flow 반환
 ```kotlin
@@ -402,7 +530,7 @@ override suspend fun findByAccountId(accountId: Long): List<LedgerEntry> {
 
 ---
 
-### 3.5 Call Chain 추적 (Transfer - 가장 복잡한 케이스)
+### 4.5 Call Chain 추적 (Transfer - 가장 복잡한 케이스)
 
 ```
 TransferController.transfer()                    [suspend]
@@ -429,7 +557,7 @@ TransferController.transfer()                    [suspend]
 
 ---
 
-### 3.6 Dispatcher 설정
+### 4.6 Dispatcher 설정
 
 **명시적 Dispatcher 설정 없음** - 전체 코드에서 `Dispatchers.IO`, `withContext`, `CoroutineScope` 사용 없음.
 
@@ -455,7 +583,7 @@ suspend fun readFile(path: String) = withContext(Dispatchers.IO) {
 
 ---
 
-## 4. Best Practice 체크리스트
+## 5. Best Practice 체크리스트
 
 ### ✅ 잘 지키고 있는 것
 
@@ -488,7 +616,7 @@ suspend fun readFile(path: String) = withContext(Dispatchers.IO) {
 
 ---
 
-## 5. Spring WebFlux + Coroutine Best Practice 총정리
+## 6. Spring WebFlux + Coroutine Best Practice 총정리
 
 ### Rule 1: 도메인은 코루틴을 모른다 🏛️
 
@@ -662,7 +790,7 @@ return transactionExecutor.execute {
 
 ---
 
-## 6. 결론
+## 7. 결론
 
 ### 🎯 프로젝트 평가
 
