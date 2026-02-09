@@ -33,6 +33,19 @@ docker-compose up -d
 ./gradlew clean build
 ```
 
+### 커버리지 (Kover)
+```bash
+# HTML 리포트 생성
+./gradlew koverHtmlReport
+# → build/reports/kover/html/index.html
+
+# 콘솔 출력
+./gradlew koverLog
+
+# 검증 (최소 70% 필요)
+./gradlew koverVerify
+```
+
 ## 📋 개발 진행 상황
 
 ### ✅ Phase 1: 프로젝트 기반 설정
