@@ -60,14 +60,14 @@ graph TB
     Adapter -->|suspend| TxExecutor
     Repo -->|non-blocking| DB
 
-    style Model fill:#D4E9D7
-    style Port1 fill:#C5D9E8
-    style Port2 fill:#C5D9E8
-    style Controller fill:#FFF4D6
-    style UseCase fill:#FFF4D6
-    style Adapter fill:#FFE4C4
-    style Repo fill:#FFE4C4
-    style TxExecutor fill:#F5C6C6
+    style Model fill:#B8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    style Port1 fill:#90CAF9,stroke:#1565C0,stroke-width:2px,color:#0D47A1
+    style Port2 fill:#90CAF9,stroke:#1565C0,stroke-width:2px,color:#0D47A1
+    style Controller fill:#FFE082,stroke:#F57F17,stroke-width:2px,color:#E65100
+    style UseCase fill:#FFE082,stroke:#F57F17,stroke-width:2px,color:#E65100
+    style Adapter fill:#FFCC80,stroke:#E65100,stroke-width:2px,color:#BF360C
+    style Repo fill:#FFCC80,stroke:#E65100,stroke-width:2px,color:#BF360C
+    style TxExecutor fill:#EF9A9A,stroke:#C62828,stroke-width:2px,color:#B71C1C
 ```
 
 **핵심 포인트**:
@@ -189,11 +189,11 @@ graph LR
     A4 --> P1
     P1 --> U1
 
-    style R1 fill:#FFE4C4
-    style A2 fill:#FFF4D6
-    style A3 fill:#F5C6C6
-    style P1 fill:#C5D9E8
-    style U1 fill:#D4E9D7
+    style R1 fill:#FFCC80,stroke:#E65100,stroke-width:2px,color:#BF360C
+    style A2 fill:#FFE082,stroke:#F57F17,stroke-width:2px,color:#E65100
+    style A3 fill:#EF9A9A,stroke:#C62828,stroke-width:2px,color:#B71C1C
+    style P1 fill:#90CAF9,stroke:#1565C0,stroke-width:2px,color:#0D47A1
+    style U1 fill:#B8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
 ```
 
 **Why List over Flow?**
