@@ -40,9 +40,16 @@ dependencies {
     implementation("io.projectreactor.kotlin:reactor-kotlin-extensions")
 
     // Test
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-test") {
+        exclude(module = "mockito-core")
+        exclude(module = "mockito-junit-jupiter")
+    }
     testImplementation("io.projectreactor:reactor-test")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+
+    // MockK
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("com.ninja-squad:springmockk:4.0.2")
 
     // Testcontainers
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
@@ -70,7 +77,9 @@ kover {
                 classes(
                     "*Configuration",
                     "*.dto.*",
-                    "*.entity.*"
+                    "*.entity.*",
+                    "*.adapter.*",
+                    "*Application*"
                 )
             }
         }
