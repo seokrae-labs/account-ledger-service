@@ -7,6 +7,11 @@ spring:
     username: ledger
     password: ledger123
 
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
 server:
   port: 8080
 
