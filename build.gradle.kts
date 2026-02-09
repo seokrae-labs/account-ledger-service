@@ -5,6 +5,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
     kotlin("jvm") version "1.9.25"
     kotlin("plugin.spring") version "1.9.25"
+    id("org.jetbrains.kotlinx.kover") version "0.9.4"
 }
 
 group = "com.labs"
@@ -60,4 +61,24 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    "*Configuration",
+                    "*.dto.*",
+                    "*.entity.*"
+                )
+            }
+        }
+
+        verify {
+            rule {
+                minBound(70)
+            }
+        }
+    }
 }
