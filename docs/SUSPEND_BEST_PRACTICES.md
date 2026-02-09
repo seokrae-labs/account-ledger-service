@@ -60,22 +60,22 @@ graph TB
     Adapter -->|suspend| TxExecutor
     Repo -->|non-blocking| DB
 
-    style Model fill:#90EE90
-    style Port1 fill:#87CEEB
-    style Port2 fill:#87CEEB
-    style Controller fill:#FFD700
-    style UseCase fill:#FFD700
-    style Adapter fill:#FFA500
-    style Repo fill:#FFA500
-    style TxExecutor fill:#FF6B6B
+    style Model fill:#D4E9D7
+    style Port1 fill:#C5D9E8
+    style Port2 fill:#C5D9E8
+    style Controller fill:#FFF4D6
+    style UseCase fill:#FFF4D6
+    style Adapter fill:#FFE4C4
+    style Repo fill:#FFE4C4
+    style TxExecutor fill:#F5C6C6
 ```
 
 **핵심 포인트**:
-- 🟢 **Domain Models**: Pure functions (코루틴-free)
-- 🔵 **Ports**: suspend interface (도메인 경계)
-- 🟡 **Application/Web**: suspend fun
-- 🟠 **Infrastructure**: suspend + Flow (내부 변환)
-- 🔴 **Transaction**: Programmatic (TransactionalOperator)
+- 🌿 **Domain Models**: Pure functions (코루틴-free)
+- 💠 **Ports**: suspend interface (도메인 경계)
+- 🌟 **Application/Web**: suspend fun
+- 🔶 **Infrastructure**: suspend + Flow (내부 변환)
+- 🔺 **Transaction**: Programmatic (TransactionalOperator)
 
 ---
 
@@ -189,11 +189,11 @@ graph LR
     A4 --> P1
     P1 --> U1
 
-    style R1 fill:#FFA500
-    style A2 fill:#FFD700
-    style A3 fill:#FF6B6B
-    style P1 fill:#87CEEB
-    style U1 fill:#90EE90
+    style R1 fill:#FFE4C4
+    style A2 fill:#FFF4D6
+    style A3 fill:#F5C6C6
+    style P1 fill:#C5D9E8
+    style U1 fill:#D4E9D7
 ```
 
 **Why List over Flow?**
