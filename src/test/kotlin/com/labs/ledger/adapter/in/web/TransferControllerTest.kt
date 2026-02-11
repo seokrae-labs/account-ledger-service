@@ -2,6 +2,7 @@ package com.labs.ledger.adapter.`in`.web
 
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
+import com.labs.ledger.domain.exception.InvalidTransferStatusTransitionException
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.TransferUseCase
@@ -239,6 +240,97 @@ class TransferControllerTest {
             .expectStatus().is5xxServerError
             .expectBody()
             .jsonPath("$.error").isEqualTo("INTERNAL_ERROR")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `null fromAccountId로 이체 시도 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", "test-key")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "toAccountId": 2,
+                    "amount": 100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("fromAccountId")
+    }
+
+    @Test
+    fun `null toAccountId로 이체 시도 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", "test-key")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "amount": 100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("toAccountId")
+    }
+
+    @Test
+    fun `0 금액으로 이체 시도 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", "test-key")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 2,
+                    "amount": 0
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("amount")
+    }
+
+    @Test
+    fun `잘못된 이체 상태 전이 - 409 Conflict`() = runTest {
+        // given
+        val idempotencyKey = "invalid-status-key"
+        coEvery {
+            transferUseCase.execute(any(), any(), any(), any(), any())
+        } throws InvalidTransferStatusTransitionException("Cannot transition from COMPLETED to PENDING")
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", idempotencyKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 2,
+                    "amount": 100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isEqualTo(409)
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_TRANSFER_STATUS_TRANSITION")
             .jsonPath("$.message").exists()
     }
 }

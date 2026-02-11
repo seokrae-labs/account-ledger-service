@@ -1,11 +1,13 @@
 package com.labs.ledger.adapter.`in`.web
 
 import com.labs.ledger.adapter.`in`.web.dto.ErrorResponse
+import com.labs.ledger.adapter.`in`.web.dto.FieldError
 import com.labs.ledger.domain.exception.*
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.bind.support.WebExchangeBindException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -50,6 +52,31 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
             .body(ErrorResponse(error = "OPTIMISTIC_LOCK_FAILED", message = e.message ?: "Concurrent modification detected"))
+    }
+
+    @ExceptionHandler(InvalidTransferStatusTransitionException::class)
+    fun handleInvalidTransferStatusTransition(e: InvalidTransferStatusTransitionException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(error = "INVALID_TRANSFER_STATUS_TRANSITION", message = e.message ?: "Invalid transfer status transition"))
+    }
+
+    @ExceptionHandler(WebExchangeBindException::class)
+    fun handleValidationException(e: WebExchangeBindException): ResponseEntity<ErrorResponse> {
+        val fieldErrors = e.bindingResult.fieldErrors.map { fieldError ->
+            FieldError(
+                field = fieldError.field,
+                message = fieldError.defaultMessage ?: "Validation failed",
+                rejectedValue = fieldError.rejectedValue
+            )
+        }
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "VALIDATION_FAILED",
+                message = "Request validation failed",
+                errors = fieldErrors
+            ))
     }
 
     @ExceptionHandler(IllegalArgumentException::class)

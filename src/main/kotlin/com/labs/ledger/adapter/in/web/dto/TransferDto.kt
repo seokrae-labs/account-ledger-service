@@ -1,12 +1,17 @@
 package com.labs.ledger.adapter.`in`.web.dto
 
 import com.labs.ledger.domain.model.Transfer
+import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Positive
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
 data class TransferRequest(
-    val fromAccountId: Long,
-    val toAccountId: Long,
+    @field:NotNull(message = "From account ID is required")
+    val fromAccountId: Long?,
+    @field:NotNull(message = "To account ID is required")
+    val toAccountId: Long?,
+    @field:Positive(message = "Amount must be positive")
     val amount: BigDecimal,
     val description: String? = null
 )

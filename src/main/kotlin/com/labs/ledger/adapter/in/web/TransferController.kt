@@ -3,6 +3,7 @@ package com.labs.ledger.adapter.`in`.web
 import com.labs.ledger.adapter.`in`.web.dto.TransferRequest
 import com.labs.ledger.adapter.`in`.web.dto.TransferResponse
 import com.labs.ledger.domain.port.TransferUseCase
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ServerWebExchange
@@ -16,7 +17,7 @@ class TransferController(
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     suspend fun transfer(
-        @RequestBody request: TransferRequest,
+        @Valid @RequestBody request: TransferRequest,
         exchange: ServerWebExchange
     ): TransferResponse {
         val idempotencyKey = exchange.request.headers.getFirst("Idempotency-Key")
@@ -24,8 +25,8 @@ class TransferController(
 
         val transfer = transferUseCase.execute(
             idempotencyKey = idempotencyKey,
-            fromAccountId = request.fromAccountId,
-            toAccountId = request.toAccountId,
+            fromAccountId = request.fromAccountId!!,
+            toAccountId = request.toAccountId!!,
             amount = request.amount,
             description = request.description
         )

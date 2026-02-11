@@ -179,23 +179,49 @@ class AccountControllerTest {
     }
 
     @Test
-    fun `음수 금액 입금 시도 - 400 Bad Request`() = runTest {
-        // given
-        val accountId = 1L
-        val amount = BigDecimal("-100.00")
-        coEvery {
-            depositUseCase.execute(accountId, amount, null)
-        } throws InvalidAmountException("Amount must be positive")
-
+    fun `음수 금액 입금 시도 - 400 Validation Failed`() = runTest {
         // when & then
         webTestClient.post()
-            .uri("/api/accounts/$accountId/deposits")
+            .uri("/api/accounts/1/deposits")
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue("""{"amount":-100.00}""")
             .exchange()
             .expectStatus().isBadRequest
             .expectBody()
-            .jsonPath("$.error").isEqualTo("INVALID_AMOUNT")
-            .jsonPath("$.message").exists()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("amount")
+    }
+
+    @Test
+    fun `빈 ownerName으로 계좌 생성 시도 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.post()
+            .uri("/api/accounts")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"ownerName":""}""")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("ownerName")
+            .jsonPath("$.errors[0].message").exists()
+    }
+
+    @Test
+    fun `0 금액으로 입금 시도 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.post()
+            .uri("/api/accounts/1/deposits")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"amount":0}""")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("amount")
+            .jsonPath("$.errors[0].message").exists()
     }
 }

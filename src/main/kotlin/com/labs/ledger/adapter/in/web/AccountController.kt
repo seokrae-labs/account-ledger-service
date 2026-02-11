@@ -6,6 +6,7 @@ import com.labs.ledger.adapter.`in`.web.dto.DepositRequest
 import com.labs.ledger.domain.port.CreateAccountUseCase
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.GetAccountBalanceUseCase
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
 
@@ -19,7 +20,7 @@ class AccountController(
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    suspend fun createAccount(@RequestBody request: CreateAccountRequest): AccountResponse {
+    suspend fun createAccount(@Valid @RequestBody request: CreateAccountRequest): AccountResponse {
         val account = createAccountUseCase.execute(request.ownerName)
         return AccountResponse.from(account)
     }
@@ -27,7 +28,7 @@ class AccountController(
     @PostMapping("/{id}/deposits")
     suspend fun deposit(
         @PathVariable id: Long,
-        @RequestBody request: DepositRequest
+        @Valid @RequestBody request: DepositRequest
     ): AccountResponse {
         val account = depositUseCase.execute(id, request.amount, request.description)
         return AccountResponse.from(account)
