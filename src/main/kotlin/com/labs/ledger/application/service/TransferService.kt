@@ -11,7 +11,10 @@ import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferRepository
 import com.labs.ledger.domain.port.TransferUseCase
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.math.BigDecimal
+
+private val logger = KotlinLogging.logger {}
 
 class TransferService(
     private val accountRepository: AccountRepository,
@@ -31,6 +34,7 @@ class TransferService(
         val existingTransfer = transferRepository.findByIdempotencyKey(idempotencyKey)
         if (existingTransfer != null) {
             if (existingTransfer.status == TransferStatus.COMPLETED) {
+                logger.warn { "Duplicate transfer attempt (idempotent): key=$idempotencyKey" }
                 return existingTransfer
             }
             throw DuplicateTransferException(
@@ -100,7 +104,10 @@ class TransferService(
 
             // Complete transfer
             val completedTransfer = pendingTransfer.complete()
-            transferRepository.save(completedTransfer)
+            val saved = transferRepository.save(completedTransfer)
+
+            logger.info { "Transfer completed: id=${saved.id}, from=$fromAccountId, to=$toAccountId, amount=$amount" }
+            saved
         }
     }
 }
