@@ -8,6 +8,7 @@ data class ErrorResponse(
     val error: String,
     val message: String,
     val errors: List<FieldError>? = null,
+    val traceId: String? = null,
     val timestamp: LocalDateTime = LocalDateTime.now()
 )
 

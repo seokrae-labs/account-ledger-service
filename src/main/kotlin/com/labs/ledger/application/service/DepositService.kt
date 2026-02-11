@@ -8,7 +8,10 @@ import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.math.BigDecimal
+
+private val logger = KotlinLogging.logger {}
 
 class DepositService(
     private val accountRepository: AccountRepository,
@@ -37,6 +40,7 @@ class DepositService(
                 )
             )
 
+            logger.info { "Deposit completed: accountId=$accountId, amount=$amount" }
             savedAccount
         }
     }

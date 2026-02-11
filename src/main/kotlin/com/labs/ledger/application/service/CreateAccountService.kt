@@ -4,7 +4,10 @@ import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.CreateAccountUseCase
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.math.BigDecimal
+
+private val logger = KotlinLogging.logger {}
 
 class CreateAccountService(
     private val accountRepository: AccountRepository
@@ -16,6 +19,8 @@ class CreateAccountService(
             balance = BigDecimal.ZERO,
             status = AccountStatus.ACTIVE
         )
-        return accountRepository.save(account)
+        val saved = accountRepository.save(account)
+        logger.info { "Account created: id=${saved.id}, owner=$ownerName" }
+        return saved
     }
 }
