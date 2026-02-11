@@ -1,4 +1,4 @@
-package com.labs.ledger.adapter.`in`.web
+package com.labs.ledger.infrastructure.web
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.slf4j.MDC
