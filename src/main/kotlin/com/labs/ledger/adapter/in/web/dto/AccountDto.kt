@@ -1,14 +1,18 @@
 package com.labs.ledger.adapter.`in`.web.dto
 
 import com.labs.ledger.domain.model.Account
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
 data class CreateAccountRequest(
+    @field:NotBlank(message = "Owner name must not be blank")
     val ownerName: String
 )
 
 data class DepositRequest(
+    @field:Positive(message = "Amount must be positive")
     val amount: BigDecimal,
     val description: String? = null
 )

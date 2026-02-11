@@ -24,6 +24,7 @@ repositories {
 dependencies {
     // Spring Boot WebFlux
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // Spring Data R2DBC
     implementation("org.springframework.boot:spring-boot-starter-data-r2dbc")
