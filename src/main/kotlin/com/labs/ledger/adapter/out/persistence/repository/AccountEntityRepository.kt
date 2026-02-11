@@ -13,9 +13,9 @@ interface AccountEntityRepository : CoroutineCrudRepository<AccountEntity, Long>
 
     @Query("""
         SELECT * FROM accounts
-        WHERE id = ANY(:ids)
+        WHERE id IN (:ids)
         ORDER BY id
         FOR UPDATE
     """)
-    suspend fun findByIdsForUpdate(ids: LongArray): List<AccountEntity>
+    suspend fun findByIdsForUpdate(ids: Collection<Long>): List<AccountEntity>
 }

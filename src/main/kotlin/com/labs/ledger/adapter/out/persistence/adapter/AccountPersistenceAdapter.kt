@@ -33,7 +33,7 @@ class AccountPersistenceAdapter(
     }
 
     override suspend fun findByIdsForUpdate(ids: List<Long>): List<Account> {
-        return repository.findByIdsForUpdate(ids.toLongArray()).map { toDomain(it) }
+        return repository.findByIdsForUpdate(ids).map { toDomain(it) }
     }
 
     private fun toEntity(domain: Account): AccountEntity {
