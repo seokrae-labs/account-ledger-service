@@ -1,4 +1,12 @@
 spring:
+  r2dbc:
+    pool:
+      enabled: true
+      initial-size: 2
+      max-size: 5
+      max-idle-time: 10m
+      max-acquire-time: 3s
+
   sql:
     init:
       mode: never  # Flyway handles schema
