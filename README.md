@@ -231,6 +231,30 @@ HTTP Request Timeout (60s)
 - 🚨 빠른 실패 및 복구
 - 📊 예측 가능한 응답 시간
 
+### Coroutine MDC Context
+
+코루틴 환경에서 MDC(Mapped Diagnostic Context)가 올바르게 전파되도록 설정되어 있습니다.
+
+**구현:**
+```kotlin
+// RequestLoggingFilter
+withContext(MDCContext()) {
+    chain.filter(exchange)  // MDC가 하위 코루틴으로 전파됨
+}
+```
+
+**로그 출력 예시:**
+```
+16:23:45.123 [a1b2c3d4e5f6] INFO  AccountController - Creating account
+16:23:45.234 [a1b2c3d4e5f6] DEBUG AccountService - Validating account
+16:23:45.345 [a1b2c3d4e5f6] DEBUG AccountRepository - Saving account
+```
+
+**Benefits:**
+- 🔍 요청 추적: 동일한 traceId로 전체 요청 흐름 추적
+- 🧵 코루틴 안전: 비동기 작업에서도 MDC 유지
+- 📊 분산 추적: 마이크로서비스 간 요청 추적 가능
+
 ### Graceful Shutdown
 
 프로덕션 환경에서 애플리케이션 종료 시 진행 중인 요청을 안전하게 완료합니다.
