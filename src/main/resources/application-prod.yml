@@ -1,0 +1,33 @@
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/ledger
+    username: ledger
+    password: ledger123
+    pool:
+      initial-size: 20
+      max-size: 50
+      max-idle-time: 30m
+      max-lifetime: 60m
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ledger
+    username: ledger
+    password: ledger123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 30
+      max-lifetime: 1800000  # 30 minutes
+      connection-timeout: 30000
+
+  flyway:
+    clean-disabled: true  # Prevent accidental data loss in production
+
+server:
+  shutdown: graceful
+
+logging:
+  level:
+    com.labs.ledger: INFO
+    io.r2dbc.postgresql: WARN
+    org.springframework: WARN
