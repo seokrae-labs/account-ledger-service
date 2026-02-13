@@ -128,11 +128,11 @@ http://localhost:8080
 
 ### 프로파일별 설정
 
-| 프로파일 | 용도 | 로깅 레벨 | 특징 |
-|---------|------|----------|------|
-| **dev** | 로컬 개발 | DEBUG | Flyway clean 허용, 상세 로깅 |
-| **prod** | 프로덕션 | INFO | 커넥션 풀 최적화, Graceful Shutdown |
-| **test** | 자동화 테스트 | DEBUG | Testcontainers, 빠른 시작 |
+| 프로파일 | 용도 | 로깅 레벨 | R2DBC Pool | 특징 |
+|---------|------|----------|-----------|------|
+| **dev** | 로컬 개발 | DEBUG | 5-10 | Flyway clean 허용, 상세 로깅 |
+| **prod** | 프로덕션 | INFO | 20-50 | 커넥션 풀 최적화, Graceful Shutdown |
+| **test** | 자동화 테스트 | DEBUG | 2-5 | Testcontainers, 빠른 시작 |
 
 ### 환경변수 설정
 
@@ -151,6 +151,41 @@ http://localhost:8080
 3. Docker Compose가 자동으로 `.env` 파일 로드
 
 ## 운영 특징
+
+### R2DBC Connection Pool
+
+환경별로 최적화된 R2DBC 커넥션 풀 설정을 제공합니다.
+
+**설정 비교:**
+
+| 설정 | Dev | Prod | Test | 설명 |
+|-----|-----|------|------|------|
+| `initial-size` | 5 | 20 | 2 | 시작 시 생성되는 커넥션 수 |
+| `max-size` | 10 | 50 | 5 | 최대 커넥션 수 |
+| `max-idle-time` | 30m | 30m | 10m | 유휴 커넥션 유지 시간 |
+| `max-lifetime` | 60m | 60m | - | 커넥션 최대 수명 |
+| `max-acquire-time` | 3s | 5s | 3s | 커넥션 획득 최대 대기 시간 |
+| `validation-query` | SELECT 1 | SELECT 1 | - | 커넥션 검증 쿼리 |
+
+**설정 예제 (application-prod.yml):**
+```yaml
+spring:
+  r2dbc:
+    pool:
+      enabled: true
+      initial-size: 20
+      max-size: 50
+      max-idle-time: 30m
+      max-lifetime: 60m
+      max-acquire-time: 5s
+      validation-query: SELECT 1
+```
+
+**Benefits:**
+- 🚀 성능: 커넥션 재사용으로 응답 시간 단축
+- 📊 안정성: 최대 커넥션 수 제한으로 리소스 보호
+- 🔍 신뢰성: Validation query로 불량 커넥션 감지
+- ⚙️ 유연성: 환경별 맞춤 설정
 
 ### Graceful Shutdown
 

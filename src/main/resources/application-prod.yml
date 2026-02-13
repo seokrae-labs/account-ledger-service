@@ -4,10 +4,14 @@ spring:
     username: ${DB_USERNAME:ledger}
     password: ${DB_PASSWORD:ledger123}
     pool:
+      enabled: true
       initial-size: 20
       max-size: 50
       max-idle-time: 30m
       max-lifetime: 60m
+      max-acquire-time: 5s
+      max-create-connection-time: 5s
+      validation-query: SELECT 1
 
   datasource:
     url: ${JDBC_URL:jdbc:postgresql://localhost:5432/ledger}
