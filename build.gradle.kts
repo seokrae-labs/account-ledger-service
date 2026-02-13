@@ -95,7 +95,6 @@ kover {
                     "*Configuration",
                     "*.dto.*",
                     "*.entity.*",
-                    "*.adapter.*",
                     "*Application*"
                 )
             }
