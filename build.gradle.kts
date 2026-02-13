@@ -25,6 +25,7 @@ dependencies {
     // Spring Boot WebFlux
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
 
     // Spring Data R2DBC
     implementation("org.springframework.boot:spring-boot-starter-data-r2dbc")
@@ -78,6 +79,11 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// Generate build-info for Actuator /info endpoint
+springBoot {
+    buildInfo()
 }
 
 kover {

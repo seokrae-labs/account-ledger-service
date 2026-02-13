@@ -32,6 +32,15 @@ spring:
 server:
   shutdown: graceful
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info  # Restrict to essential endpoints only
+  endpoint:
+    health:
+      show-details: never  # Hide sensitive details in production
+
 logging:
   level:
     com.labs.ledger: INFO
