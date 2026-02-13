@@ -5,6 +5,9 @@ spring:
   profiles:
     active: dev  # Default profile for local development
 
+  lifecycle:
+    timeout-per-shutdown-phase: 30s  # Graceful shutdown timeout
+
   sql:
     init:
       mode: never  # Flyway will handle schema initialization

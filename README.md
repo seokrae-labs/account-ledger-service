@@ -150,6 +150,36 @@ http://localhost:8080
 2. `.env` 파일 수정 (이 파일은 Git에 커밋되지 않음)
 3. Docker Compose가 자동으로 `.env` 파일 로드
 
+## 운영 특징
+
+### Graceful Shutdown
+
+프로덕션 환경에서 애플리케이션 종료 시 진행 중인 요청을 안전하게 완료합니다.
+
+**설정:**
+```yaml
+# application.yml (공통)
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# application-prod.yml (프로덕션)
+server:
+  shutdown: graceful
+```
+
+**동작 방식:**
+1. 종료 신호 수신 (SIGTERM)
+2. 새로운 요청 거부
+3. 진행 중인 요청 완료 대기 (최대 30초)
+4. 타임아웃 초과 시 강제 종료
+5. 리소스 정리 및 종료
+
+**사용 사례:**
+- 무중단 배포 (Blue-Green, Rolling Update)
+- 컨테이너 재시작 시 데이터 손실 방지
+- 이체 트랜잭션 중 강제 종료 방지
+
 ## API 엔드포인트
 
 ### 엔드포인트 요약
