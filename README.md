@@ -82,12 +82,19 @@ graph LR
 
 ### 환경 설정
 
-1. PostgreSQL 실행
+1. 환경변수 설정 (선택사항)
+```bash
+# .env 파일 생성 (기본값을 사용하려면 스킵 가능)
+cp .env.example .env
+# .env 파일을 편집하여 데이터베이스 자격증명 수정
+```
+
+2. PostgreSQL 실행
 ```bash
 docker compose up -d
 ```
 
-2. 애플리케이션 실행
+3. 애플리케이션 실행
 
 **개발 환경 (기본)**
 ```bash
@@ -96,8 +103,16 @@ docker compose up -d
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
-**프로덕션 환경**
+**프로덕션 환경 (환경변수 사용)**
 ```bash
+# Option 1: .env 파일 사용 (권장)
+export $(cat .env | xargs) && ./gradlew bootRun --args='--spring.profiles.active=prod'
+
+# Option 2: 직접 환경변수 설정
+export DB_USERNAME=prod_user
+export DB_PASSWORD=secure_password
+export R2DBC_URL=r2dbc:postgresql://prod-host:5432/ledger
+export JDBC_URL=jdbc:postgresql://prod-host:5432/ledger
 ./gradlew bootRun --args='--spring.profiles.active=prod'
 ```
 
@@ -106,7 +121,7 @@ docker compose up -d
 ./gradlew test  # 자동으로 test 프로파일 적용
 ```
 
-3. 접속
+4. 접속
 ```
 http://localhost:8080
 ```
@@ -118,6 +133,22 @@ http://localhost:8080
 | **dev** | 로컬 개발 | DEBUG | Flyway clean 허용, 상세 로깅 |
 | **prod** | 프로덕션 | INFO | 커넥션 풀 최적화, Graceful Shutdown |
 | **test** | 자동화 테스트 | DEBUG | Testcontainers, 빠른 시작 |
+
+### 환경변수 설정
+
+데이터베이스 자격증명은 환경변수를 통해 외부화할 수 있습니다:
+
+| 환경변수 | 설명 | 기본값 |
+|---------|------|--------|
+| `DB_USERNAME` | 데이터베이스 사용자명 | `ledger` |
+| `DB_PASSWORD` | 데이터베이스 비밀번호 | `ledger123` |
+| `R2DBC_URL` | R2DBC 연결 URL | `r2dbc:postgresql://localhost:5432/ledger` |
+| `JDBC_URL` | JDBC 연결 URL (Flyway용) | `jdbc:postgresql://localhost:5432/ledger` |
+
+**설정 방법:**
+1. `.env.example`을 `.env`로 복사
+2. `.env` 파일 수정 (이 파일은 Git에 커밋되지 않음)
+3. Docker Compose가 자동으로 `.env` 파일 로드
 
 ## API 엔드포인트
 

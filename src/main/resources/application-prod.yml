@@ -1,8 +1,8 @@
 spring:
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/ledger}
+    username: ${DB_USERNAME:ledger}
+    password: ${DB_PASSWORD:ledger123}
     pool:
       initial-size: 20
       max-size: 50
@@ -10,9 +10,9 @@ spring:
       max-lifetime: 60m
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
+    url: ${JDBC_URL:jdbc:postgresql://localhost:5432/ledger}
+    username: ${DB_USERNAME:ledger}
+    password: ${DB_PASSWORD:ledger123}
     driver-class-name: org.postgresql.Driver
     hikari:
       minimum-idle: 10
