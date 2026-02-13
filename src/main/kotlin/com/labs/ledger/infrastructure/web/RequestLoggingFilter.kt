@@ -1,6 +1,8 @@
 package com.labs.ledger.infrastructure.web
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.slf4j.MDCContext
+import kotlinx.coroutines.withContext
 import org.slf4j.MDC
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
@@ -12,6 +14,12 @@ import java.util.*
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * WebFilter that adds traceId to MDC for correlation logging.
+ *
+ * Uses MDCContext() to properly propagate MDC in coroutine context.
+ * This ensures traceId is available in all suspend functions and child coroutines.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class RequestLoggingFilter : CoWebFilter() {
@@ -26,7 +34,10 @@ class RequestLoggingFilter : CoWebFilter() {
         val startTime = System.currentTimeMillis()
 
         try {
-            chain.filter(exchange)
+            // Propagate MDC context to child coroutines
+            withContext(MDCContext()) {
+                chain.filter(exchange)
+            }
         } finally {
             val duration = System.currentTimeMillis() - startTime
             val method = exchange.request.method
@@ -34,7 +45,9 @@ class RequestLoggingFilter : CoWebFilter() {
             val statusCode = exchange.response.statusCode?.value() ?: 0
 
             logger.info { "$method $path $statusCode ${duration}ms" }
-            MDC.clear()
+
+            // Remove only traceId, not entire MDC
+            MDC.remove("traceId")
         }
     }
 }
