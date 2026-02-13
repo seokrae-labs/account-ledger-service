@@ -11,6 +11,7 @@ import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferRepository
 import com.labs.ledger.domain.port.TransferUseCase
+import com.labs.ledger.infrastructure.util.retryOnOptimisticLock
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.math.BigDecimal
 
@@ -42,72 +43,74 @@ class TransferService(
             )
         }
 
-        return transactionExecutor.execute {
-            // Double-check idempotency inside transaction (race condition protection)
-            val existingInTx = transferRepository.findByIdempotencyKey(idempotencyKey)
-            if (existingInTx != null) {
-                if (existingInTx.status == TransferStatus.COMPLETED) {
-                    return@execute existingInTx
+        return retryOnOptimisticLock retry@{
+            transactionExecutor.execute tx@{
+                // Double-check idempotency inside transaction (race condition protection)
+                val existingInTx = transferRepository.findByIdempotencyKey(idempotencyKey)
+                if (existingInTx != null) {
+                    if (existingInTx.status == TransferStatus.COMPLETED) {
+                        return@tx existingInTx
+                    }
+                    throw DuplicateTransferException(
+                        "Transfer with idempotency key already exists in status: ${existingInTx.status}"
+                    )
                 }
-                throw DuplicateTransferException(
-                    "Transfer with idempotency key already exists in status: ${existingInTx.status}"
+
+                // Create pending transfer
+                val transfer = Transfer(
+                    idempotencyKey = idempotencyKey,
+                    fromAccountId = fromAccountId,
+                    toAccountId = toAccountId,
+                    amount = amount,
+                    status = TransferStatus.PENDING,
+                    description = description
                 )
-            }
+                val pendingTransfer = transferRepository.save(transfer)
 
-            // Create pending transfer
-            val transfer = Transfer(
-                idempotencyKey = idempotencyKey,
-                fromAccountId = fromAccountId,
-                toAccountId = toAccountId,
-                amount = amount,
-                status = TransferStatus.PENDING,
-                description = description
-            )
-            val pendingTransfer = transferRepository.save(transfer)
+                // Load accounts in sorted order (deadlock prevention)
+                val sortedIds = listOf(fromAccountId, toAccountId).sorted()
+                val accounts = accountRepository.findByIdsForUpdate(sortedIds)
 
-            // Load accounts in sorted order (deadlock prevention)
-            val sortedIds = listOf(fromAccountId, toAccountId).sorted()
-            val accounts = accountRepository.findByIdsForUpdate(sortedIds)
+                val fromAccount = accounts.find { it.id == fromAccountId }
+                    ?: throw AccountNotFoundException("From account not found: $fromAccountId")
+                val toAccount = accounts.find { it.id == toAccountId }
+                    ?: throw AccountNotFoundException("To account not found: $toAccountId")
 
-            val fromAccount = accounts.find { it.id == fromAccountId }
-                ?: throw AccountNotFoundException("From account not found: $fromAccountId")
-            val toAccount = accounts.find { it.id == toAccountId }
-                ?: throw AccountNotFoundException("To account not found: $toAccountId")
+                // Execute domain logic
+                val debitedAccount = fromAccount.withdraw(amount)
+                val creditedAccount = toAccount.deposit(amount)
 
-            // Execute domain logic
-            val debitedAccount = fromAccount.withdraw(amount)
-            val creditedAccount = toAccount.deposit(amount)
+                // Update balances (optimistic lock will throw if concurrent modification)
+                accountRepository.save(debitedAccount)
+                accountRepository.save(creditedAccount)
 
-            // Update balances (optimistic lock will throw if concurrent modification)
-            accountRepository.save(debitedAccount)
-            accountRepository.save(creditedAccount)
-
-            // Create ledger entries
-            ledgerEntryRepository.saveAll(
-                listOf(
-                    LedgerEntry(
-                        accountId = fromAccountId,
-                        type = LedgerEntryType.DEBIT,
-                        amount = amount,
-                        referenceId = idempotencyKey,
-                        description = "Transfer to account $toAccountId"
-                    ),
-                    LedgerEntry(
-                        accountId = toAccountId,
-                        type = LedgerEntryType.CREDIT,
-                        amount = amount,
-                        referenceId = idempotencyKey,
-                        description = "Transfer from account $fromAccountId"
+                // Create ledger entries
+                ledgerEntryRepository.saveAll(
+                    listOf(
+                        LedgerEntry(
+                            accountId = fromAccountId,
+                            type = LedgerEntryType.DEBIT,
+                            amount = amount,
+                            referenceId = idempotencyKey,
+                            description = "Transfer to account $toAccountId"
+                        ),
+                        LedgerEntry(
+                            accountId = toAccountId,
+                            type = LedgerEntryType.CREDIT,
+                            amount = amount,
+                            referenceId = idempotencyKey,
+                            description = "Transfer from account $fromAccountId"
+                        )
                     )
                 )
-            )
 
-            // Complete transfer
-            val completedTransfer = pendingTransfer.complete()
-            val saved = transferRepository.save(completedTransfer)
+                // Complete transfer
+                val completedTransfer = pendingTransfer.complete()
+                val saved = transferRepository.save(completedTransfer)
 
-            logger.info { "Transfer completed: id=${saved.id}, from=$fromAccountId, to=$toAccountId, amount=$amount" }
-            saved
+                logger.info { "Transfer completed: id=${saved.id}, from=$fromAccountId, to=$toAccountId, amount=$amount" }
+                saved
+            }
         }
     }
 }

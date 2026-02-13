@@ -8,6 +8,7 @@ import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
+import com.labs.ledger.infrastructure.util.retryOnOptimisticLock
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.math.BigDecimal
 
@@ -24,24 +25,26 @@ class DepositService(
         amount: BigDecimal,
         description: String?
     ): Account {
-        return transactionExecutor.execute {
-            val account = accountRepository.findByIdForUpdate(accountId)
-                ?: throw AccountNotFoundException("Account not found: $accountId")
+        return retryOnOptimisticLock {
+            transactionExecutor.execute {
+                val account = accountRepository.findByIdForUpdate(accountId)
+                    ?: throw AccountNotFoundException("Account not found: $accountId")
 
-            val updatedAccount = account.deposit(amount)
-            val savedAccount = accountRepository.save(updatedAccount)
+                val updatedAccount = account.deposit(amount)
+                val savedAccount = accountRepository.save(updatedAccount)
 
-            ledgerEntryRepository.save(
-                LedgerEntry(
-                    accountId = savedAccount.id!!,
-                    type = LedgerEntryType.CREDIT,
-                    amount = amount,
-                    description = description
+                ledgerEntryRepository.save(
+                    LedgerEntry(
+                        accountId = savedAccount.id!!,
+                        type = LedgerEntryType.CREDIT,
+                        amount = amount,
+                        description = description
+                    )
                 )
-            )
 
-            logger.info { "Deposit completed: accountId=$accountId, amount=$amount" }
-            savedAccount
+                logger.info { "Deposit completed: accountId=$accountId, amount=$amount" }
+                savedAccount
+            }
         }
     }
 }
