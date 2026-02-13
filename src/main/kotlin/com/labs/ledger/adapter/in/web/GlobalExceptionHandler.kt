@@ -5,11 +5,15 @@ import com.labs.ledger.adapter.`in`.web.dto.FieldError
 import com.labs.ledger.domain.exception.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.slf4j.MDC
+import org.springframework.dao.DataAccessException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.bind.support.WebExchangeBindException
+import org.springframework.web.server.MethodNotAllowedException
+import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.server.ServerWebInputException
 
 private val logger = KotlinLogging.logger {}
 
@@ -62,6 +66,56 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(error = "INVALID_REQUEST", message = e.message ?: "Invalid request", traceId = getTraceId()))
+    }
+
+    @ExceptionHandler(ServerWebInputException::class)
+    fun handleServerWebInputException(e: ServerWebInputException): ResponseEntity<ErrorResponse> {
+        logger.warn { "Invalid input: ${e.reason}" }
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "INVALID_INPUT",
+                message = e.reason ?: "Invalid request body or parameters",
+                traceId = getTraceId()
+            ))
+    }
+
+    @ExceptionHandler(DataAccessException::class)
+    fun handleDataAccessException(e: DataAccessException): ResponseEntity<ErrorResponse> {
+        logger.error(e) { "Database error: ${e.message}" }
+        return ResponseEntity
+            .status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(ErrorResponse(
+                error = "DATABASE_ERROR",
+                message = "Database service is temporarily unavailable",
+                traceId = getTraceId()
+            ))
+    }
+
+    @ExceptionHandler(MethodNotAllowedException::class)
+    fun handleMethodNotAllowed(e: MethodNotAllowedException): ResponseEntity<ErrorResponse> {
+        val allowedMethods = e.supportedMethods.joinToString(", ")
+        logger.warn { "Method not allowed: ${e.httpMethod} (Allowed: $allowedMethods)" }
+        return ResponseEntity
+            .status(HttpStatus.METHOD_NOT_ALLOWED)
+            .header("Allow", allowedMethods)
+            .body(ErrorResponse(
+                error = "METHOD_NOT_ALLOWED",
+                message = "HTTP method ${e.httpMethod} is not supported for this endpoint. Allowed methods: $allowedMethods",
+                traceId = getTraceId()
+            ))
+    }
+
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatusException(e: ResponseStatusException): ResponseEntity<ErrorResponse> {
+        logger.warn { "Response status exception: ${e.statusCode} - ${e.reason}" }
+        return ResponseEntity
+            .status(e.statusCode)
+            .body(ErrorResponse(
+                error = e.statusCode.toString().replace(" ", "_").uppercase(),
+                message = e.reason ?: e.statusCode.toString(),
+                traceId = getTraceId()
+            ))
     }
 
     @ExceptionHandler(Exception::class)
