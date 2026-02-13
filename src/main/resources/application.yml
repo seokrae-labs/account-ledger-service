@@ -7,10 +7,22 @@ spring:
     username: ledger
     password: ledger123
 
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ledger
+    username: ledger
+    password: ledger123
+    driver-class-name: org.postgresql.Driver
+
   sql:
     init:
-      mode: always
-      schema-locations: classpath:schema.sql
+      mode: never  # Flyway will handle schema initialization
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    baseline-version: 0
+    baseline-description: "Initial baseline"
 
 server:
   port: 8080
