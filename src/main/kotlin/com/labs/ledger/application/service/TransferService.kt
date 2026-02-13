@@ -34,13 +34,21 @@ class TransferService(
         // Fast path: check idempotency outside transaction
         val existingTransfer = transferRepository.findByIdempotencyKey(idempotencyKey)
         if (existingTransfer != null) {
-            if (existingTransfer.status == TransferStatus.COMPLETED) {
-                logger.warn { "Duplicate transfer attempt (idempotent): key=$idempotencyKey" }
-                return existingTransfer
+            when (existingTransfer.status) {
+                TransferStatus.COMPLETED -> {
+                    logger.warn { "Duplicate transfer attempt (idempotent): key=$idempotencyKey" }
+                    return existingTransfer
+                }
+                TransferStatus.FAILED -> {
+                    logger.warn { "Retry transfer after previous failure: key=$idempotencyKey" }
+                    // Allow retry for failed transfers
+                }
+                TransferStatus.PENDING -> {
+                    throw DuplicateTransferException(
+                        "Transfer with idempotency key already exists in status: PENDING"
+                    )
+                }
             }
-            throw DuplicateTransferException(
-                "Transfer with idempotency key already exists in status: ${existingTransfer.status}"
-            )
         }
 
         return retryOnOptimisticLock retry@{
@@ -48,12 +56,20 @@ class TransferService(
                 // Double-check idempotency inside transaction (race condition protection)
                 val existingInTx = transferRepository.findByIdempotencyKey(idempotencyKey)
                 if (existingInTx != null) {
-                    if (existingInTx.status == TransferStatus.COMPLETED) {
-                        return@tx existingInTx
+                    when (existingInTx.status) {
+                        TransferStatus.COMPLETED -> {
+                            return@tx existingInTx
+                        }
+                        TransferStatus.FAILED -> {
+                            // Allow retry for failed transfers
+                            logger.info { "Retrying failed transfer in transaction: key=$idempotencyKey" }
+                        }
+                        TransferStatus.PENDING -> {
+                            throw DuplicateTransferException(
+                                "Transfer with idempotency key already exists in status: PENDING"
+                            )
+                        }
                     }
-                    throw DuplicateTransferException(
-                        "Transfer with idempotency key already exists in status: ${existingInTx.status}"
-                    )
                 }
 
                 // Create pending transfer
