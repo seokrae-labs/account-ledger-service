@@ -3,6 +3,8 @@ spring:
     url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/ledger}
     username: ${DB_USERNAME:ledger}
     password: ${DB_PASSWORD:ledger123}
+    properties:
+      statement-timeout: 30s
     pool:
       enabled: true
       initial-size: 5

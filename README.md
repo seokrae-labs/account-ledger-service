@@ -187,6 +187,50 @@ spring:
 - 🔍 신뢰성: Validation query로 불량 커넥션 감지
 - ⚙️ 유연성: 환경별 맞춤 설정
 
+### Timeout Configuration
+
+모든 레이어에서 적절한 타임아웃을 설정하여 무한 대기를 방지합니다.
+
+**타임아웃 설정 요약:**
+
+| 레이어 | 타임아웃 | Dev | Prod | 목적 |
+|-------|---------|-----|------|------|
+| HTTP Connection | `server.netty.connection-timeout` | 10s | 10s | TCP 연결 수립 타임아웃 |
+| HTTP Request | `TimeoutFilter` | 60s | 60s | 전체 요청 처리 타임아웃 |
+| R2DBC Statement | `spring.r2dbc.properties.statement-timeout` | 30s | 60s | 쿼리 실행 타임아웃 |
+| Transaction | `TransactionalOperator` | 30s | 30s | 트랜잭션 타임아웃 |
+| Connection Acquire | `spring.r2dbc.pool.max-acquire-time` | 3s | 5s | 커넥션 획득 타임아웃 |
+
+**설정 예제:**
+```yaml
+# application.yml
+server:
+  netty:
+    connection-timeout: 10s
+
+# application-prod.yml
+spring:
+  r2dbc:
+    properties:
+      statement-timeout: 60s
+    pool:
+      max-acquire-time: 5s
+```
+
+**타임아웃 계층 구조:**
+```
+HTTP Request Timeout (60s)
+  └─ Transaction Timeout (30s)
+      └─ R2DBC Statement Timeout (30s/60s)
+          └─ Connection Acquire Timeout (3s/5s)
+```
+
+**Benefits:**
+- ⏱️ 무한 대기 방지
+- 🛡️ 리소스 보호 (스레드, 커넥션)
+- 🚨 빠른 실패 및 복구
+- 📊 예측 가능한 응답 시간
+
 ### Graceful Shutdown
 
 프로덕션 환경에서 애플리케이션 종료 시 진행 중인 요청을 안전하게 완료합니다.
