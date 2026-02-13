@@ -24,6 +24,26 @@ server:
   netty:
     connection-timeout: 10s  # Connection establishment timeout
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    build:
+      enabled: true
+
 logging:
   pattern:
     console: "%d{HH:mm:ss.SSS} [%X{traceId:-}] %-5level %logger{36} - %msg%n"

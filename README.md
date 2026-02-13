@@ -259,6 +259,79 @@ server:
 - 컨테이너 재시작 시 데이터 손실 방지
 - 이체 트랜잭션 중 강제 종료 방지
 
+### Actuator & Health Check
+
+운영 환경에서 애플리케이션 상태를 모니터링할 수 있는 엔드포인트를 제공합니다.
+
+**사용 가능한 엔드포인트:**
+
+| Endpoint | Method | 설명 | Dev | Prod |
+|----------|--------|------|-----|------|
+| `/actuator/health` | GET | 헬스체크 (DB, 디스크 등) | ✅ | ✅ |
+| `/actuator/health/liveness` | GET | Liveness probe (K8s) | ✅ | ✅ |
+| `/actuator/health/readiness` | GET | Readiness probe (K8s) | ✅ | ✅ |
+| `/actuator/info` | GET | 빌드 정보 (버전, 시간) | ✅ | ✅ |
+| `/actuator/metrics` | GET | 메트릭 목록 | ✅ | ❌ |
+
+**Health Check 응답 예시:**
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "db": {
+      "status": "UP",
+      "details": {
+        "database": "PostgreSQL",
+        "validationQuery": "isValid()"
+      }
+    },
+    "diskSpace": {
+      "status": "UP"
+    },
+    "ping": {
+      "status": "UP"
+    }
+  }
+}
+```
+
+**Build Info 응답 예시:**
+```bash
+curl http://localhost:8080/actuator/info
+```
+
+```json
+{
+  "build": {
+    "artifact": "account-ledger-service",
+    "name": "account-ledger-service",
+    "version": "0.0.1-SNAPSHOT",
+    "group": "com.labs"
+  }
+}
+```
+
+**Kubernetes Probes:**
+```yaml
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: 8080
+  initialDelaySeconds: 20
+  periodSeconds: 5
+```
+
 ## API 엔드포인트
 
 ### 엔드포인트 요약
