@@ -2,16 +2,8 @@ spring:
   application:
     name: account-ledger-service
 
-  r2dbc:
-    url: r2dbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
-
-  datasource:
-    url: jdbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
-    driver-class-name: org.postgresql.Driver
+  profiles:
+    active: dev  # Default profile for local development
 
   sql:
     init:
@@ -28,8 +20,5 @@ server:
   port: 8080
 
 logging:
-  level:
-    com.labs.ledger: DEBUG
-    io.r2dbc.postgresql: INFO
   pattern:
     console: "%d{HH:mm:ss.SSS} [%X{traceId:-}] %-5level %logger{36} - %msg%n"

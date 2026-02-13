@@ -1,0 +1,20 @@
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/ledger
+    username: ledger
+    password: ledger123
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ledger
+    username: ledger
+    password: ledger123
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    clean-disabled: false  # Allow clean in dev for testing
+
+logging:
+  level:
+    com.labs.ledger: DEBUG
+    io.r2dbc.postgresql: DEBUG
+    org.springframework.r2dbc: DEBUG

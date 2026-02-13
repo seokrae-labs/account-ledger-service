@@ -1,0 +1,15 @@
+spring:
+  sql:
+    init:
+      mode: never  # Flyway handles schema
+
+  flyway:
+    enabled: true
+    clean-disabled: false  # Allow clean in tests
+
+logging:
+  level:
+    com.labs.ledger: DEBUG
+    io.r2dbc.postgresql: INFO
+    org.testcontainers: INFO
+    org.springframework.test: INFO

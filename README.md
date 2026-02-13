@@ -84,18 +84,40 @@ graph LR
 
 1. PostgreSQL 실행
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 2. 애플리케이션 실행
+
+**개발 환경 (기본)**
 ```bash
 ./gradlew bootRun
+# 또는 명시적으로
+./gradlew bootRun --args='--spring.profiles.active=dev'
+```
+
+**프로덕션 환경**
+```bash
+./gradlew bootRun --args='--spring.profiles.active=prod'
+```
+
+**테스트 환경**
+```bash
+./gradlew test  # 자동으로 test 프로파일 적용
 ```
 
 3. 접속
 ```
 http://localhost:8080
 ```
+
+### 프로파일별 설정
+
+| 프로파일 | 용도 | 로깅 레벨 | 특징 |
+|---------|------|----------|------|
+| **dev** | 로컬 개발 | DEBUG | Flyway clean 허용, 상세 로깅 |
+| **prod** | 프로덕션 | INFO | 커넥션 풀 최적화, Graceful Shutdown |
+| **test** | 자동화 테스트 | DEBUG | Testcontainers, 빠른 시작 |
 
 ## API 엔드포인트
 
