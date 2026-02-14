@@ -510,6 +510,54 @@ curl -X POST http://localhost:8080/api/transfers \
 }
 ```
 
+### 5. 페이지네이션 (리스트 조회)
+
+모든 리스트 조회 API는 페이지네이션을 지원하며, **created_at DESC (최신순)** 으로 고정 정렬됩니다.
+
+**지원 엔드포인트**
+- `GET /api/accounts?page=0&size=20`
+- `GET /api/transfers?page=0&size=20`
+- `GET /api/accounts/{id}/ledger-entries?page=0&size=20`
+
+**Request Parameters**
+
+| 파라미터 | 타입 | 기본값 | 제약 | 설명 |
+|---------|------|-------|------|------|
+| `page` | int | 0 | ≥ 0 | 페이지 번호 (0부터 시작) |
+| `size` | int | 20 | 1-100 | 페이지 크기 |
+
+**Example Request**
+```bash
+curl "http://localhost:8080/api/transfers?page=0&size=10"
+```
+
+**Response (200 OK)**
+```json
+{
+  "content": [
+    {
+      "id": 100,
+      "idempotencyKey": "...",
+      "fromAccountId": 1,
+      "toAccountId": 2,
+      "amount": 500.00,
+      "status": "COMPLETED",
+      "createdAt": "2026-02-09T12:00:00",
+      "updatedAt": "2026-02-09T12:00:00"
+    }
+  ],
+  "page": 0,
+  "size": 10,
+  "totalElements": 42,
+  "totalPages": 5
+}
+```
+
+**정렬 정책**
+- 모든 리스트는 `created_at DESC` (최신순) 고정
+- 원장 서비스 특성상 시간순 조회가 표준
+- 별도 정렬 파라미터 미지원
+
 ### 에러 응답
 
 **Error Response Structure**
