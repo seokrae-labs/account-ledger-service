@@ -6,6 +6,7 @@ import com.labs.ledger.domain.exception.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.slf4j.MDC
 import org.springframework.dao.DataAccessException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -80,6 +81,22 @@ class GlobalExceptionHandler {
             ))
     }
 
+    @ExceptionHandler(DataIntegrityViolationException::class)
+    fun handleDataIntegrityViolationException(e: DataIntegrityViolationException): ResponseEntity<ErrorResponse> {
+        if (isTransferIdempotencyDuplicate(e)) {
+            logger.warn { "Duplicate transfer (idempotency-key): ${e.message}" }
+            return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse(
+                    error = "DUPLICATE_TRANSFER",
+                    message = "Transfer with the same idempotency key already exists",
+                    traceId = getTraceId()
+                ))
+        }
+
+        return handleDataAccessException(e)
+    }
+
     @ExceptionHandler(DataAccessException::class)
     fun handleDataAccessException(e: DataAccessException): ResponseEntity<ErrorResponse> {
         logger.error(e) { "Database error: ${e.message}" }
@@ -124,5 +141,22 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(ErrorResponse(error = "INTERNAL_ERROR", message = "An unexpected error occurred", traceId = getTraceId()))
+    }
+
+    private fun isTransferIdempotencyDuplicate(e: Throwable): Boolean {
+        var current: Throwable? = e
+
+        while (current != null) {
+            val message = current.message?.lowercase().orEmpty()
+            if (message.contains("transfers_idempotency_key_key")) {
+                return true
+            }
+            if (message.contains("idempotency_key") && message.contains("duplicate")) {
+                return true
+            }
+            current = current.cause
+        }
+
+        return false
     }
 }
