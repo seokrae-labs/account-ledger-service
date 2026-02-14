@@ -5,14 +5,18 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.jdbc.Sql
 import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 
 @SpringBootTest
 @ActiveProfiles("test")
 @Sql(scripts = ["/schema-reset.sql"], executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
+@Testcontainers
 abstract class AbstractIntegrationTest {
 
     companion object {
+        @Container
         @ServiceConnection
         @JvmStatic
         val postgres: PostgreSQLContainer<*> = PostgreSQLContainer(
