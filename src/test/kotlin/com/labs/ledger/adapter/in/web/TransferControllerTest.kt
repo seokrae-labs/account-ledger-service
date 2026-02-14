@@ -1,5 +1,6 @@
 package com.labs.ledger.adapter.`in`.web
 
+import com.labs.ledger.application.port.`in`.GetTransfersUseCase
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.exception.InvalidTransferStatusTransitionException
@@ -26,6 +27,9 @@ class TransferControllerTest {
 
     @MockkBean
     private lateinit var transferUseCase: TransferUseCase
+
+    @MockkBean
+    private lateinit var getTransfersUseCase: GetTransfersUseCase
 
     @Test
     fun `이체 성공 - 201 Created`() = runTest {
