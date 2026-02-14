@@ -6,17 +6,21 @@ import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.AfterEach
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.jdbc.Sql
 import java.math.BigDecimal
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Sql(
+    scripts = ["/schema-reset.sql"],
+    executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD
+)
 class TransferPersistenceAdapterIntegrationTest {
 
     @Autowired
@@ -35,7 +39,7 @@ class TransferPersistenceAdapterIntegrationTest {
     private var toAccountId: Long = 0
 
     @BeforeEach
-    fun setupAccounts() = runTest {
+    fun setupAccounts() = runBlocking {
         // Create test accounts for foreign key constraints
         val account1 = accountAdapter.save(
             Account(
@@ -55,14 +59,8 @@ class TransferPersistenceAdapterIntegrationTest {
         toAccountId = account2.id!!
     }
 
-    @AfterEach
-    fun cleanup() = runTest {
-        repository.deleteAll()
-        accountRepository.deleteAll()
-    }
-
     @Test
-    fun `이체 저장 및 조회`() = runTest {
+    fun `이체 저장 및 조회`() = runBlocking {
         // given
         val transfer = Transfer(
             idempotencyKey = "test-key-001",
@@ -79,15 +77,15 @@ class TransferPersistenceAdapterIntegrationTest {
         // then
         assert(saved.id != null)
         assert(saved.idempotencyKey == "test-key-001")
-        assert(saved.fromAccountId == 1L)
-        assert(saved.toAccountId == 2L)
-        assert(saved.amount == BigDecimal("500.00"))
+        assert(saved.fromAccountId == fromAccountId)
+        assert(saved.toAccountId == toAccountId)
+        assert(saved.amount.compareTo(BigDecimal("500.00")) == 0)
         assert(saved.status == TransferStatus.PENDING)
         assert(saved.description == "Test transfer")
     }
 
     @Test
-    fun `idempotencyKey로 이체 조회`() = runTest {
+    fun `idempotencyKey로 이체 조회`() = runBlocking {
         // given
         val transfer = Transfer(
             idempotencyKey = "unique-key-123",
@@ -108,7 +106,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `존재하지 않는 idempotencyKey 조회`() = runTest {
+    fun `존재하지 않는 idempotencyKey 조회`() = runBlocking {
         // when
         val found = adapter.findByIdempotencyKey("non-existent-key")
 
@@ -117,7 +115,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `PENDING 상태 이체 저장`() = runTest {
+    fun `PENDING 상태 이체 저장`() = runBlocking {
         // given
         val transfer = Transfer(
             idempotencyKey = "pending-transfer",
@@ -135,7 +133,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `COMPLETED 상태 이체 저장`() = runTest {
+    fun `COMPLETED 상태 이체 저장`() = runBlocking {
         // given
         val pendingTransfer = Transfer(
             idempotencyKey = "complete-test",
@@ -156,7 +154,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `FAILED 상태 이체 저장`() = runTest {
+    fun `FAILED 상태 이체 저장`() = runBlocking {
         // given
         val pendingTransfer = Transfer(
             idempotencyKey = "fail-test",
@@ -177,7 +175,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `이체 상태 전이 검증 - PENDING to COMPLETED`() = runTest {
+    fun `이체 상태 전이 검증 - PENDING to COMPLETED`() = runBlocking {
         // given
         val transfer = Transfer(
             idempotencyKey = "transition-test-1",
@@ -199,7 +197,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `이체 상태 전이 검증 - PENDING to FAILED`() = runTest {
+    fun `이체 상태 전이 검증 - PENDING to FAILED`() = runBlocking {
         // given
         val transfer = Transfer(
             idempotencyKey = "transition-test-2",
@@ -221,7 +219,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `Entity-Domain 매핑 검증`() = runTest {
+    fun `Entity-Domain 매핑 검증`() = runBlocking {
         // given
         val transfer = Transfer(
             idempotencyKey = "mapping-test",
@@ -250,7 +248,7 @@ class TransferPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `idempotencyKey 유니크 제약 검증`() = runTest {
+    fun `idempotencyKey 유니크 제약 검증`() = runBlocking {
         // given
         val transfer1 = Transfer(
             idempotencyKey = "duplicate-key",

@@ -6,17 +6,21 @@ import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.LedgerEntry
 import com.labs.ledger.domain.model.LedgerEntryType
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.AfterEach
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.jdbc.Sql
 import java.math.BigDecimal
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Sql(
+    scripts = ["/schema-reset.sql"],
+    executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD
+)
 class LedgerEntryPersistenceAdapterIntegrationTest {
 
     @Autowired
@@ -34,7 +38,7 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
     private lateinit var testAccount: Account
 
     @BeforeEach
-    fun setup() = runTest {
+    fun setup() = runBlocking {
         // Create test account
         testAccount = accountAdapter.save(
             Account(
@@ -45,14 +49,8 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
         )
     }
 
-    @AfterEach
-    fun cleanup() = runTest {
-        repository.deleteAll()
-        accountRepository.deleteAll()
-    }
-
     @Test
-    fun `원장 엔트리 저장 및 조회`() = runTest {
+    fun `원장 엔트리 저장 및 조회`() = runBlocking {
         // given
         val entry = LedgerEntry(
             accountId = testAccount.id!!,
@@ -69,13 +67,13 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
         assert(saved.id != null)
         assert(saved.accountId == testAccount.id)
         assert(saved.type == LedgerEntryType.CREDIT)
-        assert(saved.amount == BigDecimal("500.00"))
+        assert(saved.amount.compareTo(BigDecimal("500.00")) == 0)
         assert(saved.referenceId == "test-ref-001")
         assert(saved.description == "Test deposit")
     }
 
     @Test
-    fun `여러 원장 엔트리 일괄 저장`() = runTest {
+    fun `여러 원장 엔트리 일괄 저장`() = runBlocking {
         // given
         val entries = listOf(
             LedgerEntry(
@@ -105,7 +103,7 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `계좌별 원장 엔트리 조회`() = runTest {
+    fun `계좌별 원장 엔트리 조회`() = runBlocking {
         // given
         val account1 = accountAdapter.save(
             Account(
@@ -159,7 +157,7 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `DEBIT 및 CREDIT 타입 검증`() = runTest {
+    fun `DEBIT 및 CREDIT 타입 검증`() = runBlocking {
         // given
         val debitEntry = LedgerEntry(
             accountId = testAccount.id!!,
@@ -188,7 +186,7 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `Entity-Domain 매핑 검증`() = runTest {
+    fun `Entity-Domain 매핑 검증`() = runBlocking {
         // given
         val entry = LedgerEntry(
             accountId = testAccount.id!!,
@@ -213,7 +211,7 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    fun `빈 결과 조회`() = runTest {
+    fun `빈 결과 조회`() = runBlocking {
         // given
         val nonExistentAccountId = 999L
 

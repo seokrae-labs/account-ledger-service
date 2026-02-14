@@ -4,17 +4,21 @@ import com.labs.ledger.adapter.out.persistence.repository.AccountEntityRepositor
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.AfterEach
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.jdbc.Sql
 import java.math.BigDecimal
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Sql(
+    scripts = ["/schema-reset.sql"],
+    executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD
+)
 class TransactionIntegrationTest {
 
     @Autowired
@@ -26,13 +30,8 @@ class TransactionIntegrationTest {
     @Autowired
     private lateinit var repository: AccountEntityRepository
 
-    @AfterEach
-    fun cleanup() = runTest {
-        repository.deleteAll()
-    }
-
     @Test
-    fun `트랜잭션 성공 시 커밋`() = runTest {
+    fun `트랜잭션 성공 시 커밋`() = runBlocking {
         // given
         val account = Account(
             ownerName = "Transaction Test",
@@ -53,7 +52,7 @@ class TransactionIntegrationTest {
     }
 
     @Test
-    fun `트랜잭션 예외 발생 시 롤백`() = runTest {
+    fun `트랜잭션 예외 발생 시 롤백`() = runBlocking {
         // given
         val account = Account(
             ownerName = "Rollback Test",
@@ -75,7 +74,7 @@ class TransactionIntegrationTest {
     }
 
     @Test
-    fun `트랜잭션 내 여러 연산 원자성 보장`() = runTest {
+    fun `트랜잭션 내 여러 연산 원자성 보장`() = runBlocking {
         // given
         val account1 = Account(
             ownerName = "User1",
@@ -104,7 +103,7 @@ class TransactionIntegrationTest {
     }
 
     @Test
-    fun `트랜잭션 부분 성공 시 롤백`() = runTest {
+    fun `트랜잭션 부분 성공 시 롤백`() = runBlocking {
         // given
         val account1 = Account(
             ownerName = "Partial1",
@@ -137,7 +136,7 @@ class TransactionIntegrationTest {
     }
 
     @Test
-    fun `중첩 트랜잭션 동작 확인`() = runTest {
+    fun `중첩 트랜잭션 동작 확인`() = runBlocking {
         // given
         val account = Account(
             ownerName = "Nested Test",
@@ -155,13 +154,13 @@ class TransactionIntegrationTest {
         }
 
         // then
-        assert(saved.balance == BigDecimal("700.00"))
+        assert(saved.balance.compareTo(BigDecimal("700.00")) == 0)
         val found = accountAdapter.findById(saved.id!!)
-        assert(found!!.balance == BigDecimal("700.00"))
+        assert(found!!.balance.compareTo(BigDecimal("700.00")) == 0)
     }
 
     @Test
-    fun `트랜잭션 내 조회 및 업데이트 일관성`() = runTest {
+    fun `트랜잭션 내 조회 및 업데이트 일관성`() = runBlocking {
         // given
         val account = transactionExecutor.execute {
             accountAdapter.save(
@@ -181,13 +180,13 @@ class TransactionIntegrationTest {
         }
 
         // then
-        assert(updated.balance == BigDecimal("1500.00"))
+        assert(updated.balance.compareTo(BigDecimal("1500.00")) == 0)
         val final = accountAdapter.findById(account.id!!)
-        assert(final!!.balance == BigDecimal("1500.00"))
+        assert(final!!.balance.compareTo(BigDecimal("1500.00")) == 0)
     }
 
     @Test
-    fun `여러 트랜잭션 독립성 보장`() = runTest {
+    fun `여러 트랜잭션 독립성 보장`() = runBlocking {
         // Transaction 1
         val account1 = transactionExecutor.execute {
             accountAdapter.save(
@@ -216,7 +215,7 @@ class TransactionIntegrationTest {
 
         assert(found1 != null)
         assert(found2 != null)
-        assert(found1!!.balance == BigDecimal("100.00"))
-        assert(found2!!.balance == BigDecimal("200.00"))
+        assert(found1!!.balance.compareTo(BigDecimal("100.00")) == 0)
+        assert(found2!!.balance.compareTo(BigDecimal("200.00")) == 0)
     }
 }
