@@ -46,3 +46,9 @@ logging:
     com.labs.ledger: INFO
     io.r2dbc.postgresql: WARN
     org.springframework: WARN
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

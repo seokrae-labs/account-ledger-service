@@ -28,6 +28,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
+    // OpenAPI / Swagger UI (자동 생성, 어노테이션 불필요)
+    implementation("org.springdoc:springdoc-openapi-starter-webflux-ui:2.8.15")
+
     // Spring Data R2DBC
     implementation("org.springframework.boot:spring-boot-starter-data-r2dbc")
     runtimeOnly("org.postgresql:r2dbc-postgresql")
