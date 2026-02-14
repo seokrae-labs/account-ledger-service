@@ -6,6 +6,8 @@ import com.labs.ledger.domain.exception.OptimisticLockException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.port.AccountRepository
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.stereotype.Component
 
@@ -34,6 +36,16 @@ class AccountPersistenceAdapter(
 
     override suspend fun findByIdsForUpdate(ids: List<Long>): List<Account> {
         return repository.findByIdsForUpdate(ids).map { toDomain(it) }
+    }
+
+    override suspend fun findAll(offset: Long, limit: Int): List<Account> {
+        return repository.findAllWithPagination(offset, limit)
+            .map { toDomain(it) }
+            .toList()
+    }
+
+    override suspend fun count(): Long {
+        return repository.count()
     }
 
     private fun toEntity(domain: Account): AccountEntity {

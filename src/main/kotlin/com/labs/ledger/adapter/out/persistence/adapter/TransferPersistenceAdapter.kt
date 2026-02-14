@@ -5,6 +5,8 @@ import com.labs.ledger.adapter.out.persistence.repository.TransferEntityReposito
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.TransferRepository
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
 import org.springframework.stereotype.Component
 
 @Component
@@ -20,6 +22,16 @@ class TransferPersistenceAdapter(
 
     override suspend fun findByIdempotencyKey(idempotencyKey: String): Transfer? {
         return repository.findByIdempotencyKey(idempotencyKey)?.let { toDomain(it) }
+    }
+
+    override suspend fun findAll(offset: Long, limit: Int): List<Transfer> {
+        return repository.findAllWithPagination(offset, limit)
+            .map { toDomain(it) }
+            .toList()
+    }
+
+    override suspend fun count(): Long {
+        return repository.count()
     }
 
     private fun toEntity(domain: Transfer): TransferEntity {

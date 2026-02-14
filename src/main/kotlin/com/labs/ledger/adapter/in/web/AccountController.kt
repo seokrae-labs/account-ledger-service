@@ -1,8 +1,8 @@
 package com.labs.ledger.adapter.`in`.web
 
-import com.labs.ledger.adapter.`in`.web.dto.AccountResponse
-import com.labs.ledger.adapter.`in`.web.dto.CreateAccountRequest
-import com.labs.ledger.adapter.`in`.web.dto.DepositRequest
+import com.labs.ledger.adapter.`in`.web.dto.*
+import com.labs.ledger.application.port.`in`.GetAccountsUseCase
+import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
 import com.labs.ledger.domain.port.CreateAccountUseCase
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.GetAccountBalanceUseCase
@@ -15,8 +15,19 @@ import org.springframework.web.bind.annotation.*
 class AccountController(
     private val createAccountUseCase: CreateAccountUseCase,
     private val depositUseCase: DepositUseCase,
-    private val getAccountBalanceUseCase: GetAccountBalanceUseCase
+    private val getAccountBalanceUseCase: GetAccountBalanceUseCase,
+    private val getAccountsUseCase: GetAccountsUseCase,
+    private val getLedgerEntriesUseCase: GetLedgerEntriesUseCase
 ) {
+
+    @GetMapping
+    suspend fun getAccounts(
+        @Valid @ModelAttribute pageRequest: com.labs.ledger.adapter.`in`.web.dto.PageRequest = com.labs.ledger.adapter.`in`.web.dto.PageRequest()
+    ): PageResponse<AccountResponse> {
+        val page = getAccountsUseCase.execute(pageRequest.page, pageRequest.size)
+        val content = page.accounts.map { AccountResponse.from(it) }
+        return PageResponse.of(content, page.page, page.size, page.totalElements)
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -38,5 +49,15 @@ class AccountController(
     suspend fun getAccount(@PathVariable id: Long): AccountResponse {
         val account = getAccountBalanceUseCase.execute(id)
         return AccountResponse.from(account)
+    }
+
+    @GetMapping("/{id}/ledger-entries")
+    suspend fun getLedgerEntries(
+        @PathVariable id: Long,
+        @Valid @ModelAttribute pageRequest: com.labs.ledger.adapter.`in`.web.dto.PageRequest = com.labs.ledger.adapter.`in`.web.dto.PageRequest()
+    ): PageResponse<LedgerEntryResponse> {
+        val page = getLedgerEntriesUseCase.execute(id, pageRequest.page, pageRequest.size)
+        val content = page.entries.map { LedgerEntryResponse.from(it) }
+        return PageResponse.of(content, page.page, page.size, page.totalElements)
     }
 }

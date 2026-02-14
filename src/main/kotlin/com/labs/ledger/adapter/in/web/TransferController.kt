@@ -1,7 +1,7 @@
 package com.labs.ledger.adapter.`in`.web
 
-import com.labs.ledger.adapter.`in`.web.dto.TransferRequest
-import com.labs.ledger.adapter.`in`.web.dto.TransferResponse
+import com.labs.ledger.adapter.`in`.web.dto.*
+import com.labs.ledger.application.port.`in`.GetTransfersUseCase
 import com.labs.ledger.domain.port.TransferUseCase
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -11,8 +11,18 @@ import org.springframework.web.server.ServerWebExchange
 @RestController
 @RequestMapping("/api/transfers")
 class TransferController(
-    private val transferUseCase: TransferUseCase
+    private val transferUseCase: TransferUseCase,
+    private val getTransfersUseCase: GetTransfersUseCase
 ) {
+
+    @GetMapping
+    suspend fun getTransfers(
+        @Valid @ModelAttribute pageRequest: com.labs.ledger.adapter.`in`.web.dto.PageRequest = com.labs.ledger.adapter.`in`.web.dto.PageRequest()
+    ): PageResponse<TransferResponse> {
+        val page = getTransfersUseCase.execute(pageRequest.page, pageRequest.size)
+        val content = page.transfers.map { TransferResponse.from(it) }
+        return PageResponse.of(content, page.page, page.size, page.totalElements)
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
