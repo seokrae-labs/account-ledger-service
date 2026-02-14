@@ -57,4 +57,54 @@ data class Account(
             throw InvalidAmountException("Amount must be positive: $amount")
         }
     }
+
+    /**
+     * Suspend the account. Only ACTIVE accounts can be suspended.
+     * SUSPENDED accounts cannot perform deposits or withdrawals.
+     */
+    fun suspend(): Account {
+        if (status == AccountStatus.CLOSED) {
+            throw InvalidAccountStatusException("Cannot suspend a closed account")
+        }
+        if (status == AccountStatus.SUSPENDED) {
+            throw InvalidAccountStatusException("Account is already suspended")
+        }
+
+        return copy(
+            status = AccountStatus.SUSPENDED,
+            updatedAt = LocalDateTime.now()
+        )
+    }
+
+    /**
+     * Activate (reactivate) the account. Only SUSPENDED accounts can be activated.
+     */
+    fun activate(): Account {
+        if (status == AccountStatus.CLOSED) {
+            throw InvalidAccountStatusException("Cannot activate a closed account")
+        }
+        if (status == AccountStatus.ACTIVE) {
+            throw InvalidAccountStatusException("Account is already active")
+        }
+
+        return copy(
+            status = AccountStatus.ACTIVE,
+            updatedAt = LocalDateTime.now()
+        )
+    }
+
+    /**
+     * Close the account permanently. ACTIVE or SUSPENDED accounts can be closed.
+     * Once closed, the account cannot be reactivated.
+     */
+    fun close(): Account {
+        if (status == AccountStatus.CLOSED) {
+            throw InvalidAccountStatusException("Account is already closed")
+        }
+
+        return copy(
+            status = AccountStatus.CLOSED,
+            updatedAt = LocalDateTime.now()
+        )
+    }
 }

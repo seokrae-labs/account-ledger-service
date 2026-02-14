@@ -6,6 +6,8 @@ import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
 import com.labs.ledger.domain.port.CreateAccountUseCase
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.GetAccountBalanceUseCase
+import com.labs.ledger.domain.port.UpdateAccountStatusUseCase
+import com.labs.ledger.domain.model.AccountStatus
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
@@ -16,6 +18,7 @@ class AccountController(
     private val createAccountUseCase: CreateAccountUseCase,
     private val depositUseCase: DepositUseCase,
     private val getAccountBalanceUseCase: GetAccountBalanceUseCase,
+    private val updateAccountStatusUseCase: UpdateAccountStatusUseCase,
     private val getAccountsUseCase: GetAccountsUseCase,
     private val getLedgerEntriesUseCase: GetLedgerEntriesUseCase
 ) {
@@ -59,5 +62,20 @@ class AccountController(
         val page = getLedgerEntriesUseCase.execute(id, pageRequest.page, pageRequest.size)
         val content = page.entries.map { LedgerEntryResponse.from(it) }
         return PageResponse.of(content, page.page, page.size, page.totalElements)
+    }
+
+    @PatchMapping("/{id}/status")
+    suspend fun updateAccountStatus(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: UpdateAccountStatusRequest
+    ): AccountResponse {
+        val targetStatus = try {
+            AccountStatus.valueOf(request.status.uppercase())
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid status: ${request.status}. Valid values: ACTIVE, SUSPENDED, CLOSED")
+        }
+
+        val account = updateAccountStatusUseCase.execute(id, targetStatus)
+        return AccountResponse.from(account)
     }
 }

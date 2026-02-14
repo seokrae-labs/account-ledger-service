@@ -17,6 +17,11 @@ data class DepositRequest(
     val description: String? = null
 )
 
+data class UpdateAccountStatusRequest(
+    @field:NotBlank(message = "Status must not be blank")
+    val status: String
+)
+
 data class AccountResponse(
     val id: Long,
     val ownerName: String,
