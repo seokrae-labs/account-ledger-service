@@ -3,6 +3,7 @@ package com.labs.ledger.adapter.`in`.web
 import com.labs.ledger.application.port.`in`.GetTransfersUseCase
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
+import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.exception.InvalidTransferStatusTransitionException
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
@@ -335,6 +336,33 @@ class TransferControllerTest {
             .expectStatus().isEqualTo(409)
             .expectBody()
             .jsonPath("$.error").isEqualTo("INVALID_TRANSFER_STATUS_TRANSITION")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `잔액 부족 시 - 400 Bad Request`() = runTest {
+        // given
+        val idempotencyKey = "insufficient-balance-key"
+        coEvery {
+            transferUseCase.execute(any(), any(), any(), any(), any())
+        } throws InsufficientBalanceException("Insufficient balance. Required: 1000.00, Available: 500.00")
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", idempotencyKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 2,
+                    "amount": 1000.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INSUFFICIENT_BALANCE")
             .jsonPath("$.message").exists()
     }
 }

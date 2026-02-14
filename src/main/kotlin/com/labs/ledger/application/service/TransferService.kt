@@ -1,7 +1,11 @@
 package com.labs.ledger.application.service
 
 import com.labs.ledger.domain.exception.AccountNotFoundException
+import com.labs.ledger.domain.exception.DomainException
 import com.labs.ledger.domain.exception.DuplicateTransferException
+import com.labs.ledger.domain.exception.InsufficientBalanceException
+import com.labs.ledger.domain.exception.InvalidAccountStatusException
+import com.labs.ledger.domain.exception.InvalidAmountException
 import com.labs.ledger.domain.model.LedgerEntry
 import com.labs.ledger.domain.model.LedgerEntryType
 import com.labs.ledger.domain.model.Transfer
@@ -83,49 +87,68 @@ class TransferService(
                 )
                 val pendingTransfer = transferRepository.save(transfer)
 
-                // Load accounts in sorted order (deadlock prevention)
-                val sortedIds = listOf(fromAccountId, toAccountId).sorted()
-                val accounts = accountRepository.findByIdsForUpdate(sortedIds)
+                try {
+                    // Load accounts in sorted order (deadlock prevention)
+                    val sortedIds = listOf(fromAccountId, toAccountId).sorted()
+                    val accounts = accountRepository.findByIdsForUpdate(sortedIds)
 
-                val fromAccount = accounts.find { it.id == fromAccountId }
-                    ?: throw AccountNotFoundException("From account not found: $fromAccountId")
-                val toAccount = accounts.find { it.id == toAccountId }
-                    ?: throw AccountNotFoundException("To account not found: $toAccountId")
+                    val fromAccount = accounts.find { it.id == fromAccountId }
+                        ?: throw AccountNotFoundException("From account not found: $fromAccountId")
+                    val toAccount = accounts.find { it.id == toAccountId }
+                        ?: throw AccountNotFoundException("To account not found: $toAccountId")
 
-                // Execute domain logic
-                val debitedAccount = fromAccount.withdraw(amount)
-                val creditedAccount = toAccount.deposit(amount)
+                    // Execute domain logic
+                    val debitedAccount = fromAccount.withdraw(amount)
+                    val creditedAccount = toAccount.deposit(amount)
 
-                // Update balances (optimistic lock will throw if concurrent modification)
-                accountRepository.save(debitedAccount)
-                accountRepository.save(creditedAccount)
+                    // Update balances (optimistic lock will throw if concurrent modification)
+                    accountRepository.save(debitedAccount)
+                    accountRepository.save(creditedAccount)
 
-                // Create ledger entries
-                ledgerEntryRepository.saveAll(
-                    listOf(
-                        LedgerEntry(
-                            accountId = fromAccountId,
-                            type = LedgerEntryType.DEBIT,
-                            amount = amount,
-                            referenceId = idempotencyKey,
-                            description = "Transfer to account $toAccountId"
-                        ),
-                        LedgerEntry(
-                            accountId = toAccountId,
-                            type = LedgerEntryType.CREDIT,
-                            amount = amount,
-                            referenceId = idempotencyKey,
-                            description = "Transfer from account $fromAccountId"
+                    // Create ledger entries
+                    ledgerEntryRepository.saveAll(
+                        listOf(
+                            LedgerEntry(
+                                accountId = fromAccountId,
+                                type = LedgerEntryType.DEBIT,
+                                amount = amount,
+                                referenceId = idempotencyKey,
+                                description = "Transfer to account $toAccountId"
+                            ),
+                            LedgerEntry(
+                                accountId = toAccountId,
+                                type = LedgerEntryType.CREDIT,
+                                amount = amount,
+                                referenceId = idempotencyKey,
+                                description = "Transfer from account $fromAccountId"
+                            )
                         )
                     )
-                )
 
-                // Complete transfer
-                val completedTransfer = pendingTransfer.complete()
-                val saved = transferRepository.save(completedTransfer)
+                    // Complete transfer
+                    val completedTransfer = pendingTransfer.complete()
+                    val saved = transferRepository.save(completedTransfer)
 
-                logger.info { "Transfer completed: id=${saved.id}, from=$fromAccountId, to=$toAccountId, amount=$amount" }
-                saved
+                    logger.info { "Transfer completed: id=${saved.id}, from=$fromAccountId, to=$toAccountId, amount=$amount" }
+                    saved
+                } catch (e: DomainException) {
+                    // Handle business failures - save FAILED status and re-throw
+                    when (e) {
+                        is InsufficientBalanceException,
+                        is InvalidAmountException,
+                        is InvalidAccountStatusException,
+                        is AccountNotFoundException -> {
+                            val failedTransfer = pendingTransfer.fail(e.message ?: "Unknown error")
+                            transferRepository.save(failedTransfer)
+                            logger.warn { "Transfer failed: key=$idempotencyKey, reason=${e.message}" }
+                            throw e
+                        }
+                        else -> {
+                            // Other domain exceptions (e.g., DuplicateTransferException) should not save FAILED state
+                            throw e
+                        }
+                    }
+                }
             }
         }
     }

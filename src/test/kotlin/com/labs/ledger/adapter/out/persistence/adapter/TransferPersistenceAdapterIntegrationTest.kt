@@ -166,11 +166,12 @@ class TransferPersistenceAdapterIntegrationTest {
         val saved = adapter.save(pendingTransfer)
 
         // when - Fail the transfer
-        val failed = saved.fail()
+        val failed = saved.fail("Test failure")
         val updated = adapter.save(failed)
 
         // then
         assert(updated.status == TransferStatus.FAILED)
+        assert(updated.failureReason == "Test failure")
         assert(updated.id == saved.id)
     }
 
@@ -209,13 +210,14 @@ class TransferPersistenceAdapterIntegrationTest {
         val pending = adapter.save(transfer)
 
         // when
-        val failed = pending.fail()
+        val failed = pending.fail("Transition test failure")
         val updated = adapter.save(failed)
 
         // then
         val found = adapter.findByIdempotencyKey("transition-test-2")
         assert(found != null)
         assert(found!!.status == TransferStatus.FAILED)
+        assert(found.failureReason == "Transition test failure")
     }
 
     @Test
