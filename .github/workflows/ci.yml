@@ -47,7 +47,10 @@ jobs:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/ledger
           SPRING_DATASOURCE_USERNAME: ledger
           SPRING_DATASOURCE_PASSWORD: ledger123
-        run: ./gradlew clean test koverHtmlReport koverLog
+        run: |
+          set -o pipefail
+          mkdir -p build/reports/kover
+          ./gradlew clean test koverHtmlReport koverLog | tee build/reports/kover/log.txt
 
       - name: Verify coverage threshold
         run: ./gradlew koverVerify
@@ -75,7 +78,18 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const coverageLog = fs.readFileSync('build/reports/kover/log.txt', 'utf8');
+            const coveragePath = 'build/reports/kover/log.txt';
+
+            if (!fs.existsSync(coveragePath)) {
+              core.warning(`Coverage log file not found: ${coveragePath}. Skipping PR comment.`);
+              return;
+            }
+
+            const coverageLog = fs.readFileSync(coveragePath, 'utf8').trim();
+            if (!coverageLog) {
+              core.warning('Coverage log file is empty. Skipping PR comment.');
+              return;
+            }
 
             const body = `## 📊 Coverage Report\n\n\`\`\`\n${coverageLog}\n\`\`\``;
 

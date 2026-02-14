@@ -1,6 +1,7 @@
 package com.labs.ledger.application.service
 
 import com.labs.ledger.domain.exception.AccountNotFoundException
+import com.labs.ledger.domain.exception.OptimisticLockException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.LedgerEntry
@@ -124,5 +125,44 @@ class DepositServiceTest {
         assert(ledger.type == LedgerEntryType.CREDIT)
         assert(ledger.amount == amount)
         assert(ledger.description == description)
+    }
+
+    @Test
+    fun `도메인 OptimisticLockException 발생시 재시도 후 성공`() = runTest {
+        // given
+        val accountId = 1L
+        val amount = BigDecimal("100.00")
+        val account = Account(
+            id = accountId,
+            ownerName = "John",
+            balance = BigDecimal.ZERO,
+            status = AccountStatus.ACTIVE,
+            version = 0L
+        )
+        val savedAccount = Account(
+            id = accountId,
+            ownerName = "John",
+            balance = amount,
+            status = AccountStatus.ACTIVE,
+            version = 1L
+        )
+
+        coEvery { transactionExecutor.execute<Account>(any()) } coAnswers {
+            firstArg<suspend () -> Account>().invoke()
+        }
+        coEvery { accountRepository.findByIdForUpdate(accountId) } returns account
+        coEvery {
+            accountRepository.save(any())
+        } throws OptimisticLockException("domain lock conflict") andThen savedAccount
+        coEvery { ledgerEntryRepository.save(any()) } returns mockk()
+
+        // when
+        val result = service.execute(accountId, amount, "retry")
+
+        // then
+        assert(result.balance == amount)
+        coVerify(exactly = 2) { accountRepository.findByIdForUpdate(accountId) }
+        coVerify(exactly = 2) { accountRepository.save(any()) }
+        coVerify(exactly = 1) { ledgerEntryRepository.save(any()) }
     }
 }
