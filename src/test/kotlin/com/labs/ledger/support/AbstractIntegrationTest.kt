@@ -29,12 +29,14 @@ abstract class AbstractIntegrationTest {
 
     companion object {
         @JvmStatic
-        private val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("ledger")
-            .withUsername("ledger")
-            .withPassword("ledger123")
-            .withReuse(true)
-            .apply { start() }  // Start immediately for singleton pattern
+        private val postgres: PostgreSQLContainer<*> by lazy {
+            PostgreSQLContainer("postgres:16-alpine")
+                .withDatabaseName("ledger")
+                .withUsername("ledger")
+                .withPassword("ledger123")
+                .withReuse(true)
+                .apply { start() }
+        }
 
         @JvmStatic
         @DynamicPropertySource
