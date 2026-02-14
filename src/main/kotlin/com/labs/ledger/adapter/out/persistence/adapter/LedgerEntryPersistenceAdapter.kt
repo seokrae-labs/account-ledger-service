@@ -31,6 +31,16 @@ class LedgerEntryPersistenceAdapter(
             .toList()
     }
 
+    override suspend fun findByAccountId(accountId: Long, offset: Long, limit: Int): List<LedgerEntry> {
+        return repository.findByAccountIdWithPagination(accountId, offset, limit)
+            .map { toDomain(it) }
+            .toList()
+    }
+
+    override suspend fun countByAccountId(accountId: Long): Long {
+        return repository.countByAccountId(accountId)
+    }
+
     private fun toEntity(domain: LedgerEntry): LedgerEntryEntity {
         return LedgerEntryEntity(
             id = domain.id,
