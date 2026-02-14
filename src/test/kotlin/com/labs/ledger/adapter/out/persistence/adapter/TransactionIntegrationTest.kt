@@ -3,23 +3,15 @@ package com.labs.ledger.adapter.out.persistence.adapter
 import com.labs.ledger.adapter.out.persistence.repository.AccountEntityRepository
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
+import com.labs.ledger.support.AbstractIntegrationTest
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
-import org.springframework.test.context.jdbc.Sql
 import java.math.BigDecimal
 
-@SpringBootTest
-@ActiveProfiles("test")
-@Sql(
-    scripts = ["/schema-reset.sql"],
-    executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD
-)
-class TransactionIntegrationTest {
+class TransactionIntegrationTest : AbstractIntegrationTest() {
 
     @Autowired
     private lateinit var transactionExecutor: R2dbcTransactionExecutor
