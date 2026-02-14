@@ -43,6 +43,7 @@ class TransferPersistenceAdapter(
             amount = domain.amount,
             status = domain.status.name,
             description = domain.description,
+            failureReason = domain.failureReason,
             createdAt = domain.createdAt,
             updatedAt = domain.updatedAt
         )
@@ -57,6 +58,7 @@ class TransferPersistenceAdapter(
             amount = entity.amount,
             status = TransferStatus.valueOf(entity.status),
             description = entity.description,
+            failureReason = entity.failureReason,
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt
         )

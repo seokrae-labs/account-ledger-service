@@ -15,6 +15,7 @@ data class TransferEntity(
     val amount: BigDecimal,
     val status: String,
     val description: String? = null,
+    val failureReason: String? = null,
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val updatedAt: LocalDateTime = LocalDateTime.now()
 )

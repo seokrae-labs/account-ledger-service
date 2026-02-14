@@ -151,10 +151,11 @@ class TransferTest {
         )
 
         // when
-        val failed = transfer.fail()
+        val failed = transfer.fail("Test failure reason")
 
         // then
         assertThat(failed.status).isEqualTo(TransferStatus.FAILED)
+        assertThat(failed.failureReason).isEqualTo("Test failure reason")
         assertThat(failed.id).isEqualTo(1L)
 
         // Original should not be modified (immutability)
@@ -174,7 +175,7 @@ class TransferTest {
 
         // when & then
         assertThatThrownBy {
-            completedTransfer.fail()
+            completedTransfer.fail("Test reason")
         }.isInstanceOf(InvalidTransferStatusTransitionException::class.java)
             .hasMessageContaining("Cannot fail transfer")
             .hasMessageContaining("Current status: COMPLETED")
@@ -198,7 +199,25 @@ class TransferTest {
 
         // Trying to fail after complete should throw exception
         assertThatThrownBy {
-            completed.fail()
+            completed.fail("Test reason")
         }.isInstanceOf(InvalidTransferStatusTransitionException::class.java)
+    }
+
+    @Test
+    fun `should throw exception when failure reason is blank`() {
+        // given
+        val transfer = Transfer(
+            idempotencyKey = UUID.randomUUID().toString(),
+            fromAccountId = 1L,
+            toAccountId = 2L,
+            amount = BigDecimal("100.00"),
+            status = TransferStatus.PENDING
+        )
+
+        // when & then
+        assertThatThrownBy {
+            transfer.fail("")
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Failure reason must not be blank")
     }
 }

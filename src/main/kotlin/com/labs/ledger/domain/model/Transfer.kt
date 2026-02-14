@@ -12,6 +12,7 @@ data class Transfer(
     val amount: BigDecimal,
     val status: TransferStatus = TransferStatus.PENDING,
     val description: String? = null,
+    val failureReason: String? = null,
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val updatedAt: LocalDateTime = LocalDateTime.now()
 ) {
@@ -33,14 +34,16 @@ data class Transfer(
         )
     }
 
-    fun fail(): Transfer {
+    fun fail(reason: String): Transfer {
         if (status != TransferStatus.PENDING) {
             throw InvalidTransferStatusTransitionException(
                 "Cannot fail transfer. Current status: $status"
             )
         }
+        require(reason.isNotBlank()) { "Failure reason must not be blank" }
         return copy(
             status = TransferStatus.FAILED,
+            failureReason = reason,
             updatedAt = LocalDateTime.now()
         )
     }

@@ -2,6 +2,7 @@ package com.labs.ledger.application.service
 
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
+import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.LedgerEntry
@@ -641,5 +642,202 @@ class TransferServiceTest {
 
         // then
         assert(sortedIdsSlot.captured == listOf(2L, 5L)) { "Expected sorted order [2, 5], got ${sortedIdsSlot.captured}" }
+    }
+
+    @Test
+    fun `잔액 부족 시 FAILED 상태로 저장`() = runTest {
+        // given
+        val idempotencyKey = "insufficient-balance-key"
+        val fromAccountId = 1L
+        val toAccountId = 2L
+        val amount = BigDecimal("1000.00")
+
+        val fromAccount = Account(
+            id = fromAccountId,
+            ownerName = "Alice",
+            balance = BigDecimal("500.00"), // 잔액 부족
+            status = AccountStatus.ACTIVE,
+            version = 0L
+        )
+        val toAccount = Account(
+            id = toAccountId,
+            ownerName = "Bob",
+            balance = BigDecimal("200.00"),
+            status = AccountStatus.ACTIVE,
+            version = 0L
+        )
+
+        val pendingTransfer = Transfer(
+            id = 1L,
+            idempotencyKey = idempotencyKey,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            amount = amount,
+            status = TransferStatus.PENDING,
+            description = null
+        )
+
+        var findCallCount = 0
+        coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
+            findCallCount++
+            null
+        }
+
+        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
+            firstArg<suspend () -> Transfer>().invoke()
+        }
+
+        coEvery { transferRepository.save(any()) } returns pendingTransfer andThenAnswer {
+            val transfer = firstArg<Transfer>()
+            transfer
+        }
+        coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
+
+        // when & then
+        val exception = assertThrows<InsufficientBalanceException> {
+            service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
+        }
+
+        // Verify FAILED transfer was saved
+        val transferSlot = mutableListOf<Transfer>()
+        coVerify { transferRepository.save(capture(transferSlot)) }
+
+        val failedTransfer = transferSlot.find { it.status == TransferStatus.FAILED }
+        assert(failedTransfer != null) { "FAILED transfer should be saved" }
+        assert(failedTransfer?.failureReason != null) { "Failure reason should be recorded" }
+        assert(failedTransfer?.failureReason?.contains("Insufficient balance") == true) {
+            "Failure reason should contain 'Insufficient balance', got: ${failedTransfer?.failureReason}"
+        }
+    }
+
+    @Test
+    fun `계좌 없음 시 FAILED 상태로 저장`() = runTest {
+        // given
+        val idempotencyKey = "account-not-found-key"
+        val fromAccountId = 1L
+        val toAccountId = 2L
+        val amount = BigDecimal("100.00")
+
+        val toAccount = Account(
+            id = toAccountId,
+            ownerName = "Bob",
+            balance = BigDecimal("200.00"),
+            status = AccountStatus.ACTIVE,
+            version = 0L
+        )
+
+        val pendingTransfer = Transfer(
+            id = 1L,
+            idempotencyKey = idempotencyKey,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            amount = amount,
+            status = TransferStatus.PENDING,
+            description = null
+        )
+
+        var findCallCount = 0
+        coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
+            findCallCount++
+            null
+        }
+
+        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
+            firstArg<suspend () -> Transfer>().invoke()
+        }
+
+        coEvery { transferRepository.save(any()) } returns pendingTransfer andThenAnswer {
+            val transfer = firstArg<Transfer>()
+            transfer
+        }
+        coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(toAccount)
+
+        // when & then
+        val exception = assertThrows<AccountNotFoundException> {
+            service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
+        }
+
+        // Verify FAILED transfer was saved
+        val transferSlot = mutableListOf<Transfer>()
+        coVerify { transferRepository.save(capture(transferSlot)) }
+
+        val failedTransfer = transferSlot.find { it.status == TransferStatus.FAILED }
+        assert(failedTransfer != null) { "FAILED transfer should be saved" }
+        assert(failedTransfer?.failureReason != null) { "Failure reason should be recorded" }
+        assert(failedTransfer?.failureReason?.contains("From account not found") == true) {
+            "Failure reason should contain 'From account not found', got: ${failedTransfer?.failureReason}"
+        }
+    }
+
+    @Test
+    fun `FAILED 이체 재시도 성공 시 새 Transfer 생성`() = runTest {
+        // given
+        val idempotencyKey = "retry-after-failed"
+        val fromAccountId = 1L
+        val toAccountId = 2L
+        val amount = BigDecimal("100.00")
+
+        val failedTransfer = Transfer(
+            id = 1L,
+            idempotencyKey = idempotencyKey,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            amount = amount,
+            status = TransferStatus.FAILED,
+            description = null,
+            failureReason = "Previous failure reason"
+        )
+
+        val fromAccount = Account(
+            id = fromAccountId,
+            ownerName = "Alice",
+            balance = BigDecimal("500.00"),
+            status = AccountStatus.ACTIVE,
+            version = 0L
+        )
+        val toAccount = Account(
+            id = toAccountId,
+            ownerName = "Bob",
+            balance = BigDecimal("200.00"),
+            status = AccountStatus.ACTIVE,
+            version = 0L
+        )
+
+        val newPendingTransfer = Transfer(
+            id = 2L,
+            idempotencyKey = idempotencyKey,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            amount = amount,
+            status = TransferStatus.PENDING,
+            description = null,
+            failureReason = null // 새 이체는 failureReason이 없음
+        )
+        val completedTransfer = newPendingTransfer.complete()
+
+        var findCallCount = 0
+        coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
+            findCallCount++
+            if (findCallCount <= 2) failedTransfer else null
+        }
+
+        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
+            firstArg<suspend () -> Transfer>().invoke()
+        }
+
+        coEvery { transferRepository.save(any()) } returns newPendingTransfer andThen completedTransfer
+        coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
+        coEvery { accountRepository.save(any()) } returns mockk()
+        coEvery { ledgerEntryRepository.saveAll(any()) } returns mockk()
+
+        // when
+        val result = service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
+
+        // then
+        assert(result.status == TransferStatus.COMPLETED)
+        assert(result.failureReason == null) { "New transfer should not have failure reason" }
+
+        // Verify new transfer was created (not updated)
+        coVerify(exactly = 2) { transferRepository.save(any()) }
     }
 }
