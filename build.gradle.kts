@@ -6,6 +6,7 @@ plugins {
     kotlin("jvm") version "1.9.25"
     kotlin("plugin.spring") version "1.9.25"
     id("org.jetbrains.kotlinx.kover") version "0.9.4"
+    id("com.epages.restdocs-api-spec") version "0.18.4"
 }
 
 group = "com.labs"
@@ -63,6 +64,9 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("com.ninja-squad:springmockk:4.0.2")
 
+    // Spring REST Docs + OpenAPI 3.0 spec generation
+    testImplementation("org.springframework.restdocs:spring-restdocs-webtestclient")
+    testImplementation("com.epages:restdocs-api-spec-webtestclient:0.18.4")
 }
 
 tasks.withType<KotlinCompile> {
@@ -100,4 +104,25 @@ kover {
             }
         }
     }
+}
+
+// OpenAPI 3.0 spec generation from REST Docs
+openapi3 {
+    setServer("http://localhost:8080")
+    title = "Account Ledger & Transfer Service API"
+    description = "실시간 계좌 잔액 관리와 안전한 이체 처리를 제공하는 Reactive 원장 서비스"
+    version = "1.0.0"
+    format = "yaml"
+    outputDirectory = "build/api-spec"
+}
+
+// Copy OpenAPI spec to static resources for serving
+tasks.register<Copy>("copyOpenApiSpec") {
+    dependsOn("openapi3")
+    from("build/api-spec/openapi3.yaml")
+    into("src/main/resources/static/api-docs")
+}
+
+tasks.named("build") {
+    dependsOn("copyOpenApiSpec")
 }

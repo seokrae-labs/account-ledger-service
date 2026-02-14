@@ -1,5 +1,7 @@
 package com.labs.ledger.adapter.`in`.web
 
+import org.springframework.restdocs.webtestclient.WebTestClientRestDocumentation.document
+import com.labs.ledger.RestDocsConfiguration
 import com.labs.ledger.application.port.`in`.GetTransfersUseCase
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
@@ -13,14 +15,21 @@ import io.mockk.coEvery
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.restdocs.headers.HeaderDocumentation.headerWithName
+import org.springframework.restdocs.headers.HeaderDocumentation.requestHeaders
+import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
+import org.springframework.restdocs.payload.PayloadDocumentation.relaxedRequestFields
+import org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields
 import org.springframework.test.web.reactive.server.WebTestClient
 import java.math.BigDecimal
 
 @WebFluxTest(TransferController::class)
-@Import(GlobalExceptionHandler::class)
+@AutoConfigureRestDocs
+@Import(GlobalExceptionHandler::class, RestDocsConfiguration::class)
 class TransferControllerTest {
 
     @Autowired
@@ -72,6 +81,30 @@ class TransferControllerTest {
             .jsonPath("$.id").isEqualTo(1)
             .jsonPath("$.status").isEqualTo("COMPLETED")
             .jsonPath("$.amount").isEqualTo(500.00)
+            .consumeWith(
+                document(
+                    "transfer-create",
+                    requestHeaders(
+                        headerWithName("Idempotency-Key").description("멱등성 키 (UUID 권장, 중복 이체 방지)")
+                    ),
+                    relaxedRequestFields(
+                        fieldWithPath("fromAccountId").description("출금 계좌 ID"),
+                        fieldWithPath("toAccountId").description("입금 계좌 ID"),
+                        fieldWithPath("amount").description("이체 금액")
+                    ),
+                    relaxedResponseFields(
+                        fieldWithPath("id").description("이체 ID"),
+                        fieldWithPath("idempotencyKey").description("멱등성 키"),
+                        fieldWithPath("fromAccountId").description("출금 계좌 ID"),
+                        fieldWithPath("toAccountId").description("입금 계좌 ID"),
+                        fieldWithPath("amount").description("이체 금액"),
+                        fieldWithPath("status").description("이체 상태 (PENDING, COMPLETED, FAILED)"),
+                        fieldWithPath("description").description("이체 설명"),
+                        fieldWithPath("createdAt").description("생성 시각"),
+                        fieldWithPath("updatedAt").description("수정 시각")
+                    )
+                )
+            )
     }
 
     @Test
