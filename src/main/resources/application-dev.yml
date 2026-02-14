@@ -1,6 +1,6 @@
 spring:
   r2dbc:
-    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/ledger}
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/ledger?sslMode=disable}
     username: ${DB_USERNAME:ledger}
     password: ${DB_PASSWORD:ledger123}
     properties:
