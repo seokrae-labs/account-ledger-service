@@ -8,6 +8,9 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 30s  # Graceful shutdown timeout
 
+  webflux:
+    webjars-path-pattern: /webjars/**  # Fix Swagger UI path pattern issue
+
   sql:
     init:
       mode: never  # Flyway will handle schema initialization
@@ -55,3 +58,5 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: method
+    disable-swagger-default-url: true
+    use-root-path: false
