@@ -10,6 +10,7 @@ import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
 import com.labs.ledger.domain.port.CreateAccountUseCase
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.GetAccountBalanceUseCase
+import com.labs.ledger.domain.port.UpdateAccountStatusUseCase
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.coEvery
 import kotlinx.coroutines.test.runTest
@@ -42,6 +43,9 @@ class AccountControllerTest {
 
     @MockkBean
     private lateinit var getLedgerEntriesUseCase: GetLedgerEntriesUseCase
+
+    @MockkBean
+    private lateinit var updateAccountStatusUseCase: UpdateAccountStatusUseCase
 
     @Test
     fun `계좌 생성 성공 - 201 Created`() = runTest {
