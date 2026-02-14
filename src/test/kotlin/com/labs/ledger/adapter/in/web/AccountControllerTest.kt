@@ -192,6 +192,20 @@ class AccountControllerTest {
             .expectBody()
             .jsonPath("$.id").isEqualTo(accountId)
             .jsonPath("$.balance").isEqualTo(1000.00)
+            .consumeWith(
+                document(
+                    "account-get",
+                    relaxedResponseFields(
+                        fieldWithPath("id").description("계좌 ID"),
+                        fieldWithPath("ownerName").description("계좌 소유자 이름"),
+                        fieldWithPath("balance").description("계좌 잔액"),
+                        fieldWithPath("status").description("계좌 상태"),
+                        fieldWithPath("version").description("버전 (Optimistic Lock)"),
+                        fieldWithPath("createdAt").description("생성 시각"),
+                        fieldWithPath("updatedAt").description("수정 시각")
+                    )
+                )
+            )
     }
 
     @Test
