@@ -16,7 +16,7 @@ spring:
       validation-query: SELECT 1
 
   datasource:
-    url: ${JDBC_URL:jdbc:postgresql://localhost:5432/ledger}
+    url: ${JDBC_URL:jdbc:postgresql://localhost:5432/ledger?sslmode=disable}
     username: ${DB_USERNAME:ledger}
     password: ${DB_PASSWORD:ledger123}
     driver-class-name: org.postgresql.Driver
