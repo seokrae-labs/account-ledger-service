@@ -1,11 +1,12 @@
 package com.labs.ledger.adapter.`in`.web
 
+import com.labs.ledger.adapter.`in`.web.dto.ErrorResponse
 import com.labs.ledger.domain.exception.*
 import org.junit.jupiter.api.Test
 import org.springframework.dao.DataAccessException
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.support.WebExchangeBindException
 import org.springframework.web.server.MethodNotAllowedException
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.server.ServerWebInputException
@@ -93,34 +94,6 @@ class GlobalExceptionHandlerTest {
         assert(response.statusCode == HttpStatus.BAD_REQUEST)
         assert(response.body?.error == "INVALID_INPUT")
         assert(response.body?.message?.contains("Invalid JSON") == true)
-    }
-
-    @Test
-    fun `DataIntegrityViolationException 처리 - idempotency key 중복`() {
-        // given
-        val exception = DataIntegrityViolationException(
-            "duplicate key value violates unique constraint \"transfers_idempotency_key_key\""
-        )
-
-        // when
-        val response = handler.handleDataIntegrityViolationException(exception)
-
-        // then
-        assert(response.statusCode == HttpStatus.CONFLICT)
-        assert(response.body?.error == "DUPLICATE_TRANSFER")
-    }
-
-    @Test
-    fun `DataIntegrityViolationException 처리 - 일반 제약 위반은 DB 오류`() {
-        // given
-        val exception = DataIntegrityViolationException("violates check constraint check_amount_positive")
-
-        // when
-        val response = handler.handleDataIntegrityViolationException(exception)
-
-        // then
-        assert(response.statusCode == HttpStatus.SERVICE_UNAVAILABLE)
-        assert(response.body?.error == "DATABASE_ERROR")
     }
 
     @Test
@@ -235,7 +208,6 @@ class GlobalExceptionHandlerTest {
             InsufficientBalanceException("test"),
             IllegalArgumentException("test"),
             ServerWebInputException("test"),
-            DataIntegrityViolationException("duplicate key value violates unique constraint \"transfers_idempotency_key_key\""),
             object : DataAccessException("test") {},
             RuntimeException("test")
         )
@@ -246,7 +218,6 @@ class GlobalExceptionHandlerTest {
                 is AccountNotFoundException -> handler.handleDomainException(exception)
                 is IllegalArgumentException -> handler.handleIllegalArgument(exception)
                 is ServerWebInputException -> handler.handleServerWebInputException(exception)
-                is DataIntegrityViolationException -> handler.handleDataIntegrityViolationException(exception)
                 is DataAccessException -> handler.handleDataAccessException(exception)
                 else -> handler.handleGenericException(exception)
             }

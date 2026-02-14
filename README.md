@@ -19,7 +19,7 @@
 | Persistence | R2DBC + PostgreSQL | 1.0.7 / 16 |
 | Build Tool | Gradle | 8.11.1 |
 | JDK | OpenJDK | 21 |
-| Testing | JUnit 5 + MockK + Spring Test | - |
+| Testing | JUnit 5 + Testcontainers | 1.20.4 |
 | Coverage | Kover | 0.9.4 |
 
 ## 아키텍처
@@ -91,7 +91,7 @@ cp .env.example .env
 
 2. PostgreSQL 실행
 ```bash
-docker compose up -d postgres
+docker compose up -d
 ```
 
 3. 애플리케이션 실행
@@ -176,7 +176,7 @@ curl http://localhost:8080/actuator/health/readiness
 |---------|------|----------|-----------|------|
 | **dev** | 로컬 개발 | DEBUG | 5-10 | Flyway clean 허용, 상세 로깅 |
 | **prod** | 프로덕션 | INFO | 20-50 | 커넥션 풀 최적화, Graceful Shutdown |
-| **test** | 자동화 테스트 | DEBUG | 2-5 | 로컬 PostgreSQL 기반, 빠른 시작 |
+| **test** | 자동화 테스트 | DEBUG | 2-5 | Testcontainers, 빠른 시작 |
 
 ### 환경변수 설정
 
@@ -600,12 +600,7 @@ val second = accountRepository.findByIdForUpdate(secondId)
 
 ### 실행
 
-테스트는 **localhost:5432 PostgreSQL**을 사용합니다. 먼저 테스트용 DB를 실행한 뒤 테스트를 실행하세요.
-
 ```bash
-# 테스트용 DB 실행
-docker compose up -d postgres
-
 # 전체 테스트 실행
 ./gradlew test
 

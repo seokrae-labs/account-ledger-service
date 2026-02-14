@@ -11,13 +11,13 @@ interface LedgerEntryEntityRepository : CoroutineCrudRepository<LedgerEntryEntit
     fun findByAccountId(accountId: Long): Flow<LedgerEntryEntity>
 
     @Query("""
-        SELECT * FROM ledger_entries
+        SELECT * FROM ledger_entry
         WHERE account_id = :accountId
         ORDER BY created_at DESC
         LIMIT :limit OFFSET :offset
     """)
     fun findByAccountIdWithPagination(accountId: Long, offset: Long, limit: Int): Flow<LedgerEntryEntity>
 
-    @Query("SELECT COUNT(*) FROM ledger_entries WHERE account_id = :accountId")
+    @Query("SELECT COUNT(*) FROM ledger_entry WHERE account_id = :accountId")
     suspend fun countByAccountId(accountId: Long): Long
 }
