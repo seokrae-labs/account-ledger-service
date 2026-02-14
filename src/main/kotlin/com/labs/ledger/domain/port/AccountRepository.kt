@@ -7,4 +7,8 @@ interface AccountRepository {
     suspend fun findById(id: Long): Account?
     suspend fun findByIdForUpdate(id: Long): Account?
     suspend fun findByIdsForUpdate(ids: List<Long>): List<Account>
+
+    // Pagination support
+    suspend fun findAll(offset: Long, limit: Int): List<Account>
+    suspend fun count(): Long
 }
