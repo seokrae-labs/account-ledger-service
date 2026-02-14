@@ -4,6 +4,7 @@ import com.labs.ledger.application.service.CreateAccountService
 import com.labs.ledger.application.service.DepositService
 import com.labs.ledger.application.service.GetAccountBalanceService
 import com.labs.ledger.application.service.TransferService
+import com.labs.ledger.application.service.UpdateAccountStatusService
 import com.labs.ledger.domain.port.*
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -32,6 +33,14 @@ class UseCaseConfig {
         transactionExecutor: TransactionExecutor
     ): DepositUseCase {
         return DepositService(accountRepository, ledgerEntryRepository, transactionExecutor)
+    }
+
+    @Bean
+    fun updateAccountStatusUseCase(
+        accountRepository: AccountRepository,
+        transactionExecutor: TransactionExecutor
+    ): UpdateAccountStatusUseCase {
+        return UpdateAccountStatusService(accountRepository, transactionExecutor)
     }
 
     @Bean
