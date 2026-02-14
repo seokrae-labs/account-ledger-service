@@ -7,6 +7,8 @@ import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidAmountException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
+import com.labs.ledger.domain.model.LedgerEntry
+import com.labs.ledger.domain.model.LedgerEntryType
 import com.labs.ledger.application.port.`in`.GetAccountsUseCase
 import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
 import com.labs.ledger.domain.port.CreateAccountUseCase
@@ -25,6 +27,9 @@ import org.springframework.http.MediaType
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
 import org.springframework.restdocs.payload.PayloadDocumentation.relaxedRequestFields
 import org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields
+import org.springframework.restdocs.request.RequestDocumentation.parameterWithName
+import org.springframework.restdocs.request.RequestDocumentation.queryParameters
+import org.springframework.restdocs.request.RequestDocumentation.pathParameters
 import org.springframework.test.web.reactive.server.WebTestClient
 import java.math.BigDecimal
 
@@ -290,5 +295,149 @@ class AccountControllerTest {
             .jsonPath("$.message").isEqualTo("Request validation failed")
             .jsonPath("$.errors[0].field").isEqualTo("amount")
             .jsonPath("$.errors[0].message").exists()
+    }
+
+    @Test
+    fun `계좌 목록 조회 성공 - 200 OK`() = runTest {
+        // given
+        val accounts = listOf(
+            Account(id = 1L, ownerName = "Alice", balance = BigDecimal("1000"), status = AccountStatus.ACTIVE, version = 0L),
+            Account(id = 2L, ownerName = "Bob", balance = BigDecimal("2000"), status = AccountStatus.ACTIVE, version = 0L)
+        )
+        val page = com.labs.ledger.application.port.`in`.AccountsPage(
+            accounts = accounts,
+            page = 0,
+            size = 20,
+            totalElements = 2
+        )
+
+        coEvery { getAccountsUseCase.execute(0, 20) } returns page
+
+        // when & then
+        webTestClient.get()
+            .uri("/api/accounts?page=0&size=20")
+            .exchange()
+            .expectStatus().isOk
+            .expectBody()
+            .jsonPath("$.content").isArray
+            .jsonPath("$.page").isEqualTo(0)
+            .jsonPath("$.size").isEqualTo(20)
+            .consumeWith(
+                document(
+                    "accounts-list",
+                    queryParameters(
+                        parameterWithName("page").description("페이지 번호 (0부터 시작)").optional(),
+                        parameterWithName("size").description("페이지 크기 (1-100)").optional()
+                    ),
+                    relaxedResponseFields(
+                        fieldWithPath("content[]").description("계좌 목록"),
+                        fieldWithPath("content[].id").description("계좌 ID"),
+                        fieldWithPath("content[].ownerName").description("소유자 이름"),
+                        fieldWithPath("content[].balance").description("잔액"),
+                        fieldWithPath("content[].status").description("상태"),
+                        fieldWithPath("page").description("현재 페이지 번호"),
+                        fieldWithPath("size").description("페이지 크기"),
+                        fieldWithPath("totalElements").description("전체 요소 수"),
+                        fieldWithPath("totalPages").description("전체 페이지 수"),
+                        fieldWithPath("hasNext").description("다음 페이지 존재 여부"),
+                        fieldWithPath("hasPrevious").description("이전 페이지 존재 여부")
+                    )
+                )
+            )
+    }
+
+    @Test
+    fun `원장 엔트리 조회 성공 - 200 OK`() = runTest {
+        // given
+        val accountId = 1L
+        val entries = listOf(
+            LedgerEntry(
+                id = 1L,
+                accountId = accountId,
+                type = LedgerEntryType.CREDIT,
+                amount = BigDecimal("500"),
+                referenceId = null,
+                description = "Initial deposit"
+            )
+        )
+        val page = com.labs.ledger.application.port.`in`.LedgerEntriesPage(
+            entries = entries,
+            page = 0,
+            size = 20,
+            totalElements = 1
+        )
+
+        coEvery { getLedgerEntriesUseCase.execute(accountId, 0, 20) } returns page
+
+        // when & then
+        webTestClient.get()
+            .uri("/api/accounts/$accountId/ledger-entries?page=0&size=20")
+            .exchange()
+            .expectStatus().isOk
+            .expectBody()
+            .jsonPath("$.content").isArray
+            .consumeWith(
+                document(
+                    "account-ledger-entries",
+                    queryParameters(
+                        parameterWithName("page").description("페이지 번호").optional(),
+                        parameterWithName("size").description("페이지 크기").optional()
+                    ),
+                    relaxedResponseFields(
+                        fieldWithPath("content[]").description("원장 엔트리 목록"),
+                        fieldWithPath("content[].id").description("엔트리 ID"),
+                        fieldWithPath("content[].accountId").description("계좌 ID"),
+                        fieldWithPath("content[].type").description("거래 유형 (DEPOSIT, WITHDRAWAL)"),
+                        fieldWithPath("content[].amount").description("거래 금액"),
+                        fieldWithPath("content[].referenceId").description("참조 ID (이체 ID 등)"),
+                        fieldWithPath("content[].description").description("거래 설명"),
+                        fieldWithPath("page").description("현재 페이지"),
+                        fieldWithPath("size").description("페이지 크기"),
+                        fieldWithPath("totalElements").description("전체 요소 수")
+                    )
+                )
+            )
+    }
+
+    @Test
+    fun `계좌 상태 변경 성공 - 200 OK`() = runTest {
+        // given
+        val accountId = 1L
+        val updatedAccount = Account(
+            id = accountId,
+            ownerName = "John Doe",
+            balance = BigDecimal("1000"),
+            status = AccountStatus.SUSPENDED,
+            version = 1L
+        )
+
+        coEvery { updateAccountStatusUseCase.execute(accountId, AccountStatus.SUSPENDED) } returns updatedAccount
+
+        // when & then
+        webTestClient.patch()
+            .uri("/api/accounts/$accountId/status")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"status":"SUSPENDED"}""")
+            .exchange()
+            .expectStatus().isOk
+            .expectBody()
+            .jsonPath("$.status").isEqualTo("SUSPENDED")
+            .consumeWith(
+                document(
+                    "account-status-update",
+                    relaxedRequestFields(
+                        fieldWithPath("status").description("변경할 상태 (ACTIVE, SUSPENDED, CLOSED)")
+                    ),
+                    relaxedResponseFields(
+                        fieldWithPath("id").description("계좌 ID"),
+                        fieldWithPath("ownerName").description("소유자 이름"),
+                        fieldWithPath("balance").description("잔액"),
+                        fieldWithPath("status").description("변경된 상태"),
+                        fieldWithPath("version").description("버전 (Optimistic Lock)"),
+                        fieldWithPath("createdAt").description("생성 시각"),
+                        fieldWithPath("updatedAt").description("수정 시각")
+                    )
+                )
+            )
     }
 }
