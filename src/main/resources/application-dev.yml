@@ -24,6 +24,12 @@ spring:
   flyway:
     clean-disabled: false  # Allow clean in dev for testing
 
+springdoc:
+  api-docs:
+    enabled: false  # Disable due to path pattern incompatibility with Spring Boot 3.4.2
+  swagger-ui:
+    enabled: false  # Use REST Docs instead (build/docs/asciidoc)
+
 logging:
   level:
     com.labs.ledger: DEBUG
