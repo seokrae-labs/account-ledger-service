@@ -24,6 +24,8 @@ import org.springframework.restdocs.headers.HeaderDocumentation.requestHeaders
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
 import org.springframework.restdocs.payload.PayloadDocumentation.relaxedRequestFields
 import org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields
+import org.springframework.restdocs.request.RequestDocumentation.parameterWithName
+import org.springframework.restdocs.request.RequestDocumentation.queryParameters
 import org.springframework.test.web.reactive.server.WebTestClient
 import java.math.BigDecimal
 
@@ -397,5 +399,73 @@ class TransferControllerTest {
             .expectBody()
             .jsonPath("$.error").isEqualTo("INSUFFICIENT_BALANCE")
             .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `이체 목록 조회 성공 - 200 OK`() = runTest {
+        // given
+        val transfers = listOf(
+            Transfer(
+                id = 1L,
+                idempotencyKey = "key-001",
+                fromAccountId = 1L,
+                toAccountId = 2L,
+                amount = BigDecimal("500"),
+                status = TransferStatus.COMPLETED,
+                description = "Payment"
+            ),
+            Transfer(
+                id = 2L,
+                idempotencyKey = "key-002",
+                fromAccountId = 2L,
+                toAccountId = 3L,
+                amount = BigDecimal("300"),
+                status = TransferStatus.COMPLETED,
+                description = "Refund"
+            )
+        )
+        val page = com.labs.ledger.application.port.`in`.TransfersPage(
+            transfers = transfers,
+            page = 0,
+            size = 20,
+            totalElements = 2
+        )
+
+        coEvery { getTransfersUseCase.execute(0, 20) } returns page
+
+        // when & then
+        webTestClient.get()
+            .uri("/api/transfers?page=0&size=20")
+            .exchange()
+            .expectStatus().isOk
+            .expectBody()
+            .jsonPath("$.content").isArray
+            .jsonPath("$.page").isEqualTo(0)
+            .jsonPath("$.size").isEqualTo(20)
+            .consumeWith(
+                document(
+                    "transfers-list",
+                    queryParameters(
+                        parameterWithName("page").description("페이지 번호 (0부터 시작)").optional(),
+                        parameterWithName("size").description("페이지 크기 (1-100)").optional()
+                    ),
+                    relaxedResponseFields(
+                        fieldWithPath("content[]").description("이체 목록"),
+                        fieldWithPath("content[].id").description("이체 ID"),
+                        fieldWithPath("content[].idempotencyKey").description("멱등성 키"),
+                        fieldWithPath("content[].fromAccountId").description("출금 계좌 ID"),
+                        fieldWithPath("content[].toAccountId").description("입금 계좌 ID"),
+                        fieldWithPath("content[].amount").description("이체 금액"),
+                        fieldWithPath("content[].status").description("이체 상태"),
+                        fieldWithPath("content[].description").description("이체 설명"),
+                        fieldWithPath("page").description("현재 페이지"),
+                        fieldWithPath("size").description("페이지 크기"),
+                        fieldWithPath("totalElements").description("전체 요소 수"),
+                        fieldWithPath("totalPages").description("전체 페이지 수"),
+                        fieldWithPath("hasNext").description("다음 페이지 존재 여부"),
+                        fieldWithPath("hasPrevious").description("이전 페이지 존재 여부")
+                    )
+                )
+            )
     }
 }
