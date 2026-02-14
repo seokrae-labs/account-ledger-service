@@ -1,5 +1,7 @@
 package com.labs.ledger.adapter.`in`.web
 
+import org.springframework.restdocs.webtestclient.WebTestClientRestDocumentation.document
+import com.labs.ledger.RestDocsConfiguration
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidAmountException
@@ -16,14 +18,19 @@ import io.mockk.coEvery
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
+import org.springframework.restdocs.payload.PayloadDocumentation.relaxedRequestFields
+import org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields
 import org.springframework.test.web.reactive.server.WebTestClient
 import java.math.BigDecimal
 
 @WebFluxTest(AccountController::class)
-@Import(GlobalExceptionHandler::class)
+@AutoConfigureRestDocs
+@Import(GlobalExceptionHandler::class, RestDocsConfiguration::class)
 class AccountControllerTest {
 
     @Autowired
@@ -72,6 +79,23 @@ class AccountControllerTest {
             .jsonPath("$.id").isEqualTo(1)
             .jsonPath("$.ownerName").isEqualTo(ownerName)
             .jsonPath("$.balance").isEqualTo(0)
+            .consumeWith(
+                document(
+                    "account-create",
+                    relaxedRequestFields(
+                        fieldWithPath("ownerName").description("계좌 소유자 이름")
+                    ),
+                    relaxedResponseFields(
+                        fieldWithPath("id").description("계좌 ID"),
+                        fieldWithPath("ownerName").description("계좌 소유자 이름"),
+                        fieldWithPath("balance").description("계좌 잔액"),
+                        fieldWithPath("status").description("계좌 상태 (ACTIVE, SUSPENDED, CLOSED)"),
+                        fieldWithPath("version").description("버전 (Optimistic Lock)"),
+                        fieldWithPath("createdAt").description("생성 시각"),
+                        fieldWithPath("updatedAt").description("수정 시각")
+                    )
+                )
+            )
     }
 
     @Test
@@ -99,6 +123,23 @@ class AccountControllerTest {
             .expectBody()
             .jsonPath("$.id").isEqualTo(accountId)
             .jsonPath("$.balance").isEqualTo(500.00)
+            .consumeWith(
+                document(
+                    "account-deposit",
+                    relaxedRequestFields(
+                        fieldWithPath("amount").description("입금 금액 (양수)")
+                    ),
+                    relaxedResponseFields(
+                        fieldWithPath("id").description("계좌 ID"),
+                        fieldWithPath("ownerName").description("계좌 소유자 이름"),
+                        fieldWithPath("balance").description("계좌 잔액 (입금 후)"),
+                        fieldWithPath("status").description("계좌 상태"),
+                        fieldWithPath("version").description("버전 (Optimistic Lock)"),
+                        fieldWithPath("createdAt").description("생성 시각"),
+                        fieldWithPath("updatedAt").description("수정 시각")
+                    )
+                )
+            )
     }
 
     @Test
