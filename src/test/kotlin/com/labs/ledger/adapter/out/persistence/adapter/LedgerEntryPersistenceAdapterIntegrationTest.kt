@@ -157,6 +157,33 @@ class LedgerEntryPersistenceAdapterIntegrationTest {
     }
 
     @Test
+    fun `원장 엔트리 페이징 조회 및 카운트`() = runBlocking {
+        // given
+        repeat(3) { idx ->
+            adapter.save(
+                LedgerEntry(
+                    accountId = testAccount.id!!,
+                    type = if (idx % 2 == 0) LedgerEntryType.CREDIT else LedgerEntryType.DEBIT,
+                    amount = BigDecimal("10.00").plus(BigDecimal(idx)),
+                    referenceId = "page-test-$idx",
+                    description = "Entry $idx"
+                )
+            )
+        }
+
+        // when
+        val firstPage = adapter.findByAccountId(testAccount.id!!, offset = 0, limit = 2)
+        val secondPage = adapter.findByAccountId(testAccount.id!!, offset = 2, limit = 2)
+        val totalCount = adapter.countByAccountId(testAccount.id!!)
+
+        // then
+        assert(firstPage.size == 2)
+        assert(secondPage.size == 1)
+        assert(totalCount == 3L)
+        assert((firstPage + secondPage).all { it.accountId == testAccount.id })
+    }
+
+    @Test
     fun `DEBIT 및 CREDIT 타입 검증`() = runBlocking {
         // given
         val debitEntry = LedgerEntry(
