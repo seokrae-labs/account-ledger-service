@@ -5,6 +5,8 @@ import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidAmountException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
+import com.labs.ledger.application.port.`in`.GetAccountsUseCase
+import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
 import com.labs.ledger.domain.port.CreateAccountUseCase
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.GetAccountBalanceUseCase
@@ -34,6 +36,12 @@ class AccountControllerTest {
 
     @MockkBean
     private lateinit var getAccountBalanceUseCase: GetAccountBalanceUseCase
+
+    @MockkBean
+    private lateinit var getAccountsUseCase: GetAccountsUseCase
+
+    @MockkBean
+    private lateinit var getLedgerEntriesUseCase: GetLedgerEntriesUseCase
 
     @Test
     fun `계좌 생성 성공 - 201 Created`() = runTest {
