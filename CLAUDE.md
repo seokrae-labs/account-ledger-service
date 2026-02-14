@@ -1,8 +1,6 @@
-# CLAUDE.md
+# Account Ledger & Transfer Service
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-# Account Ledger & Transfer Service
 
 실시간 계좌 잔액 관리와 안전한 이체 처리를 제공하는 Reactive 원장 서비스
 
@@ -14,14 +12,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Database**: PostgreSQL 16
 - **Build**: Gradle 8.11.1
 - **Testing**: JUnit 5 + Testcontainers
-- **Coverage**: Kover (최소 70%, 현재 93%+)
+- **Coverage**: Kover (최소 70%, 현재 85.92%)
+
+## ⚡ Quick Start
+
+```bash
+# 1. 애플리케이션 실행
+docker compose up -d postgres  # PostgreSQL 시작
+./gradlew bootRun
+
+# 2. 테스트 실행 (Testcontainers 자동 실행 - DB 사전 준비 불필요)
+./gradlew test
+```
+
+**Testcontainers 사용**: 통합 테스트는 Testcontainers를 통해 PostgreSQL을 자동 실행합니다. Docker만 실행 중이면 별도의 DB 준비 없이 테스트가 가능합니다.
 
 ## 🛠️ 주요 명령어
 
 ### 환경 및 실행
 ```bash
 # PostgreSQL 시작
-docker-compose up -d
+docker compose up -d postgres
 
 # 애플리케이션 실행
 ./gradlew bootRun
@@ -231,12 +242,37 @@ override suspend fun findByAccountId(accountId: Long): List<LedgerEntry> {
 
 ## 🧪 테스트 전략
 
+### Testcontainers 기반 통합 테스트
+
+모든 통합 테스트는 `AbstractIntegrationTest` 베이스 클래스를 상속하여 Testcontainers를 사용합니다:
+
+```kotlin
+@SpringBootTest
+@ActiveProfiles("test")
+@Testcontainers
+@Sql(scripts = ["/schema-reset.sql"], executionPhase = BEFORE_TEST_METHOD)
+abstract class AbstractIntegrationTest {
+    companion object {
+        @ServiceConnection  // R2DBC + JDBC 자동 연결
+        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16-alpine")
+            .withDatabaseName("ledger")
+            .withUsername("ledger")
+            .withPassword("ledger123")
+    }
+}
+```
+
+**특징**:
+- Singleton Container: 6개 통합 테스트 클래스가 하나의 컨테이너 공유
+- @ServiceConnection: R2DBC + JDBC(Flyway) 연결 속성 자동 주입
+- Schema Reset: 각 테스트 메서드마다 `/schema-reset.sql` 실행
+
 ### 테스트 계층
 
 | 계층 | 유형 | 특징 |
 |-----|------|------|
 | Domain | 단위 테스트 | 순수 함수, 코루틴 불필요 |
-| Service | 통합 테스트 | Testcontainers + PostgreSQL |
+| Service | 통합 테스트 | Testcontainers + PostgreSQL (자동 실행) |
 | Controller | API 테스트 | WebTestClient |
 
 ### 동시성 테스트 예제
@@ -252,11 +288,43 @@ fun `동시 입금 시 optimistic locking 동작`() = runBlocking {
 }
 ```
 
+## 🔧 문제 해결 (Troubleshooting)
+
+### 테스트 실패 시
+
+**증상**: Docker 데몬 실행 오류
+```bash
+# 해결 방법
+# Docker Desktop 또는 Docker 데몬 실행 확인
+docker ps  # 정상 동작 확인
+./gradlew test  # 재시도 (Testcontainers가 PostgreSQL 자동 시작)
+```
+
+**증상**: `OptimisticLockException` 테스트 실패
+- 정상 동작: 이 예외는 동시성 제어의 일부이며, 재시도 로직에서 처리됨
+- 테스트가 재시도 로직을 검증하는지 확인
+
+### 커버리지 검증 실패 시
+```bash
+# 현재 커버리지 확인
+./gradlew koverLog
+
+# 상세 HTML 리포트
+./gradlew koverHtmlReport
+open build/reports/kover/html/index.html
+```
+
+### 빌드 실패 시
+```bash
+# 캐시 클리어 후 재빌드
+./gradlew clean build --no-daemon
+```
+
 ## 📚 참고 문서
 
+- **운영 가이드**: `README.md` (Docker, 환경변수, Actuator)
+- **Suspend Best Practices**: `docs/SUSPEND_BEST_PRACTICES.md` (코루틴 패턴 상세)
 - **아키텍처 분석**: Issue #29 (GlobalExceptionHandler 패키지 배치)
-- **Suspend Best Practices**: `docs/SUSPEND_BEST_PRACTICES.md`
-- **프로젝트 개요**: `README.md`
 - **GitHub Issues**: https://github.com/seokrae-labs/account-ledger-service/issues
 
 ## 🚨 중요 원칙
@@ -302,6 +370,6 @@ suspend fun save(account: Account): Account {
 
 ---
 
-**마지막 업데이트**: 2026-02-11
-**커버리지**: 93.53%
+**마지막 업데이트**: 2026-02-14
+**커버리지**: 85.92%
 **상태**: ✅ 전체 개발 완료

@@ -648,13 +648,10 @@ val second = accountRepository.findByIdForUpdate(secondId)
 
 ### 실행
 
-테스트는 **localhost:5432 PostgreSQL**을 사용합니다. 먼저 테스트용 DB를 실행한 뒤 테스트를 실행하세요.
+테스트는 **Testcontainers**를 사용하여 PostgreSQL을 자동으로 실행합니다. Docker만 실행 중이면 별도의 DB 준비 없이 테스트가 가능합니다.
 
 ```bash
-# 테스트용 DB 실행
-docker compose up -d postgres
-
-# 전체 테스트 실행
+# 전체 테스트 실행 (Testcontainers가 PostgreSQL 자동 시작)
 ./gradlew test
 
 # 커버리지 리포트 생성 (HTML)
@@ -664,6 +661,12 @@ docker compose up -d postgres
 # 커버리지 검증 (최소 70%)
 ./gradlew koverVerify
 ```
+
+**Testcontainers 특징**:
+- 🐳 Docker만 실행 중이면 즉시 테스트 가능
+- 🚀 각 테스트마다 깨끗한 DB 상태 보장
+- ♻️ Singleton 컨테이너로 빠른 테스트 실행 (JVM당 1회 시작)
+- ⚙️ CI 환경에서도 동일하게 동작
 
 ### 커버리지
 

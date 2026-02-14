@@ -1,20 +1,13 @@
 spring:
+  # Connection properties are auto-configured by @ServiceConnection in AbstractIntegrationTest
+  # Testcontainers provides dynamic R2DBC and JDBC URLs
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
     pool:
       enabled: true
       initial-size: 2
       max-size: 5
       max-idle-time: 10m
       max-acquire-time: 3s
-
-  datasource:
-    url: jdbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
-    driver-class-name: org.postgresql.Driver
 
   sql:
     init:
