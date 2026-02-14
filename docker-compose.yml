@@ -16,5 +16,22 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build:
+      context: .
+    image: account-ledger-service:latest
+    container_name: account-ledger-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      DB_USERNAME: ${DB_USERNAME:-ledger}
+      DB_PASSWORD: ${DB_PASSWORD:-ledger123}
+      R2DBC_URL: r2dbc:postgresql://postgres:5432/${DB_NAME:-ledger}
+      JDBC_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-ledger}
+
 volumes:
   postgres-data:
