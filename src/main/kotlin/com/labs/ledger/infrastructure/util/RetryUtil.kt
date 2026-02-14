@@ -1,5 +1,6 @@
 package com.labs.ledger.infrastructure.util
 
+import com.labs.ledger.domain.exception.OptimisticLockException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.delay
 import org.springframework.dao.OptimisticLockingFailureException
@@ -26,9 +27,15 @@ suspend fun <T> retryOnOptimisticLock(
     repeat(maxAttempts - 1) { attempt ->
         try {
             return block()
-        } catch (e: OptimisticLockingFailureException) {
+        } catch (e: Exception) {
+            if (!isRetryableOptimisticLockException(e)) {
+                throw e
+            }
+
             val attemptNumber = attempt + 1
-            logger.warn { "Optimistic lock conflict, retrying... (attempt $attemptNumber/$maxAttempts)" }
+            logger.warn {
+                "Optimistic lock conflict (${e::class.simpleName}), retrying... (attempt $attemptNumber/$maxAttempts)"
+            }
 
             // Exponential backoff: 0ms, 100ms, 200ms
             val delayMs = when (attempt) {
@@ -46,8 +53,18 @@ suspend fun <T> retryOnOptimisticLock(
     // Last attempt without catching exception
     return try {
         block()
-    } catch (e: OptimisticLockingFailureException) {
-        logger.error { "Optimistic lock conflict exhausted all $maxAttempts attempts" }
+    } catch (e: Exception) {
+        if (!isRetryableOptimisticLockException(e)) {
+            throw e
+        }
+
+        logger.error {
+            "Optimistic lock conflict (${e::class.simpleName}) exhausted all $maxAttempts attempts"
+        }
         throw e
     }
+}
+
+private fun isRetryableOptimisticLockException(e: Throwable): Boolean {
+    return e is OptimisticLockingFailureException || e is OptimisticLockException
 }
