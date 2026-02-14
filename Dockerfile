@@ -24,6 +24,11 @@ FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
+# Install healthcheck dependency
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd -r spring && useradd -r -g spring spring
 
