@@ -91,7 +91,7 @@ cp .env.example .env
 
 2. PostgreSQL 실행
 ```bash
-docker compose up -d
+docker compose up -d postgres
 ```
 
 3. 애플리케이션 실행
