@@ -126,6 +126,50 @@ export JDBC_URL=jdbc:postgresql://prod-host:5432/ledger
 http://localhost:8080
 ```
 
+### Docker로 실행
+
+**Docker 이미지 빌드**
+```bash
+docker build -t account-ledger-service:latest .
+```
+
+**PostgreSQL과 함께 실행 (Docker Compose 사용)**
+```bash
+# PostgreSQL + 애플리케이션 모두 시작
+docker compose up -d
+
+# 로그 확인
+docker compose logs -f app
+
+# 종료
+docker compose down
+```
+
+**단독 실행 (PostgreSQL이 이미 실행 중인 경우)**
+```bash
+docker run -d \
+  --name account-ledger-service \
+  -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=prod \
+  -e DB_USERNAME=ledger \
+  -e DB_PASSWORD=ledger123 \
+  -e R2DBC_URL=r2dbc:postgresql://host.docker.internal:5432/ledger \
+  -e JDBC_URL=jdbc:postgresql://host.docker.internal:5432/ledger \
+  account-ledger-service:latest
+```
+
+**헬스체크**
+```bash
+# 애플리케이션 상태 확인
+curl http://localhost:8080/actuator/health
+
+# Liveness probe
+curl http://localhost:8080/actuator/health/liveness
+
+# Readiness probe
+curl http://localhost:8080/actuator/health/readiness
+```
+
 ### 프로파일별 설정
 
 | 프로파일 | 용도 | 로깅 레벨 | R2DBC Pool | 특징 |
