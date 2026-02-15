@@ -435,154 +435,68 @@ class TransferServiceTest {
     }
 
     @Test
-    fun `멱등성 fast path - FAILED 상태시 재시도 허용`() = runTest {
+    fun `멱등성 fast path - FAILED 상태시 기존 FAILED 반환`() = runTest {
         // given
-        val idempotencyKey = "retry-after-failure"
-        val fromAccountId = 1L
-        val toAccountId = 2L
-        val amount = BigDecimal("100.00")
-
+        val idempotencyKey = "failed-key"
         val failedTransfer = Transfer(
             id = 1L,
             idempotencyKey = idempotencyKey,
-            fromAccountId = fromAccountId,
-            toAccountId = toAccountId,
-            amount = amount,
+            fromAccountId = 1L,
+            toAccountId = 2L,
+            amount = BigDecimal("100.00"),
             status = TransferStatus.FAILED,
             description = null
         )
 
-        val fromAccount = Account(
-            id = fromAccountId,
-            ownerName = "Alice",
-            balance = BigDecimal("500.00"),
-            status = AccountStatus.ACTIVE,
-            version = 0L
-        )
-        val toAccount = Account(
-            id = toAccountId,
-            ownerName = "Bob",
-            balance = BigDecimal("200.00"),
-            status = AccountStatus.ACTIVE,
-            version = 0L
-        )
-
-        val pendingTransfer = Transfer(
-            id = 2L,
-            idempotencyKey = idempotencyKey,
-            fromAccountId = fromAccountId,
-            toAccountId = toAccountId,
-            amount = amount,
-            status = TransferStatus.PENDING,
-            description = null
-        )
-        val completedTransfer = pendingTransfer.complete()
-
-        var findCallCount = 0
-
-        // Fast path: FAILED (should allow retry)
-        // Double-check inside transaction: also FAILED (should allow retry)
-        coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
-            findCallCount++
-            if (findCallCount <= 2) failedTransfer else null
-        }
-
-        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
-            firstArg<suspend () -> Transfer>().invoke()
-        }
-
-        coEvery { transferRepository.save(any()) } returns pendingTransfer andThen completedTransfer
-        coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
-        coEvery { accountRepository.save(any()) } returns mockk()
-        coEvery { ledgerEntryRepository.saveAll(any()) } returns mockk()
+        coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } returns failedTransfer
 
         // when
-        val result = service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
+        val result = service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
 
         // then
-        assert(result.status == TransferStatus.COMPLETED)
-        assert(result.amount == amount)
+        assert(result == failedTransfer)
 
-        // Should proceed with new transfer despite FAILED status
-        coVerify(exactly = 1) { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) }
-        coVerify(exactly = 2) { transferRepository.save(any()) }
+        // No transaction should be executed
+        coVerify(exactly = 0) { transactionExecutor.execute<Transfer>(any()) }
     }
 
     @Test
-    fun `멱등성 double-check - FAILED 상태시 재시도 허용 (race condition)`() = runTest {
+    fun `멱등성 double-check - FAILED 상태시 기존 FAILED 반환 (race condition)`() = runTest {
         // given
         val idempotencyKey = "race-key-failed"
-        val fromAccountId = 1L
-        val toAccountId = 2L
-        val amount = BigDecimal("100.00")
-
         val failedTransfer = Transfer(
             id = 1L,
             idempotencyKey = idempotencyKey,
-            fromAccountId = fromAccountId,
-            toAccountId = toAccountId,
-            amount = amount,
+            fromAccountId = 1L,
+            toAccountId = 2L,
+            amount = BigDecimal("100.00"),
             status = TransferStatus.FAILED,
             description = null
         )
-
-        val fromAccount = Account(
-            id = fromAccountId,
-            ownerName = "Alice",
-            balance = BigDecimal("500.00"),
-            status = AccountStatus.ACTIVE,
-            version = 0L
-        )
-        val toAccount = Account(
-            id = toAccountId,
-            ownerName = "Bob",
-            balance = BigDecimal("200.00"),
-            status = AccountStatus.ACTIVE,
-            version = 0L
-        )
-
-        val pendingTransfer = Transfer(
-            id = 2L,
-            idempotencyKey = idempotencyKey,
-            fromAccountId = fromAccountId,
-            toAccountId = toAccountId,
-            amount = amount,
-            status = TransferStatus.PENDING,
-            description = null
-        )
-        val completedTransfer = pendingTransfer.complete()
 
         var findCallCount = 0
 
         // Fast path: null (no existing transfer)
-        // Double-check inside transaction: FAILED (should allow retry)
+        // Double-check inside transaction: FAILED (created by another request)
         coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
             findCallCount++
-            when (findCallCount) {
-                1 -> null
-                2 -> failedTransfer
-                else -> null
-            }
+            if (findCallCount == 1) null else failedTransfer
         }
 
+        // Transaction execution
         coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
             firstArg<suspend () -> Transfer>().invoke()
         }
 
-        coEvery { transferRepository.save(any()) } returns pendingTransfer andThen completedTransfer
-        coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
-        coEvery { accountRepository.save(any()) } returns mockk()
-        coEvery { ledgerEntryRepository.saveAll(any()) } returns mockk()
-
         // when
-        val result = service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
+        val result = service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
 
         // then
-        assert(result.status == TransferStatus.COMPLETED)
+        assert(result == failedTransfer)
 
-        // Should proceed with transfer despite FAILED status in double-check
-        coVerify(exactly = 1) { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) }
-        coVerify(exactly = 2) { transferRepository.save(any()) }
+        // Should not proceed with transfer creation
+        coVerify(exactly = 0) { transferRepository.save(any()) }
+        coVerify(exactly = 0) { accountRepository.findByIdsForUpdate(any()) }
     }
 
     @Test
@@ -769,75 +683,4 @@ class TransferServiceTest {
         }
     }
 
-    @Test
-    fun `FAILED 이체 재시도 성공 시 새 Transfer 생성`() = runTest {
-        // given
-        val idempotencyKey = "retry-after-failed"
-        val fromAccountId = 1L
-        val toAccountId = 2L
-        val amount = BigDecimal("100.00")
-
-        val failedTransfer = Transfer(
-            id = 1L,
-            idempotencyKey = idempotencyKey,
-            fromAccountId = fromAccountId,
-            toAccountId = toAccountId,
-            amount = amount,
-            status = TransferStatus.FAILED,
-            description = null,
-            failureReason = "Previous failure reason"
-        )
-
-        val fromAccount = Account(
-            id = fromAccountId,
-            ownerName = "Alice",
-            balance = BigDecimal("500.00"),
-            status = AccountStatus.ACTIVE,
-            version = 0L
-        )
-        val toAccount = Account(
-            id = toAccountId,
-            ownerName = "Bob",
-            balance = BigDecimal("200.00"),
-            status = AccountStatus.ACTIVE,
-            version = 0L
-        )
-
-        val newPendingTransfer = Transfer(
-            id = 2L,
-            idempotencyKey = idempotencyKey,
-            fromAccountId = fromAccountId,
-            toAccountId = toAccountId,
-            amount = amount,
-            status = TransferStatus.PENDING,
-            description = null,
-            failureReason = null // 새 이체는 failureReason이 없음
-        )
-        val completedTransfer = newPendingTransfer.complete()
-
-        var findCallCount = 0
-        coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
-            findCallCount++
-            if (findCallCount <= 2) failedTransfer else null
-        }
-
-        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
-            firstArg<suspend () -> Transfer>().invoke()
-        }
-
-        coEvery { transferRepository.save(any()) } returns newPendingTransfer andThen completedTransfer
-        coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
-        coEvery { accountRepository.save(any()) } returns mockk()
-        coEvery { ledgerEntryRepository.saveAll(any()) } returns mockk()
-
-        // when
-        val result = service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
-
-        // then
-        assert(result.status == TransferStatus.COMPLETED)
-        assert(result.failureReason == null) { "New transfer should not have failure reason" }
-
-        // Verify new transfer was created (not updated)
-        coVerify(exactly = 2) { transferRepository.save(any()) }
-    }
 }

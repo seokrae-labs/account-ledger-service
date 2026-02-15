@@ -44,8 +44,8 @@ class TransferService(
                     return existingTransfer
                 }
                 TransferStatus.FAILED -> {
-                    logger.warn { "Retry transfer after previous failure: key=$idempotencyKey" }
-                    // Allow retry for failed transfers
+                    logger.warn { "Transfer previously failed: key=$idempotencyKey" }
+                    return existingTransfer
                 }
                 TransferStatus.PENDING -> {
                     throw DuplicateTransferException(
@@ -65,8 +65,7 @@ class TransferService(
                             return@tx existingInTx
                         }
                         TransferStatus.FAILED -> {
-                            // Allow retry for failed transfers
-                            logger.info { "Retrying failed transfer in transaction: key=$idempotencyKey" }
+                            return@tx existingInTx
                         }
                         TransferStatus.PENDING -> {
                             throw DuplicateTransferException(
