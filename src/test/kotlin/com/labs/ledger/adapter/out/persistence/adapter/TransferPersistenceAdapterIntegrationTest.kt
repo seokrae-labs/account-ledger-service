@@ -6,22 +6,14 @@ import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
+import com.labs.ledger.support.AbstractIntegrationTest
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
-import org.springframework.test.context.jdbc.Sql
 import java.math.BigDecimal
 
-@SpringBootTest
-@ActiveProfiles("test")
-@Sql(
-    scripts = ["/schema-reset.sql"],
-    executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD
-)
-class TransferPersistenceAdapterIntegrationTest {
+class TransferPersistenceAdapterIntegrationTest : AbstractIntegrationTest() {
 
     @Autowired
     private lateinit var adapter: TransferPersistenceAdapter

@@ -2,6 +2,7 @@ package com.labs.ledger.application.service
 
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
+import com.labs.ledger.support.AbstractIntegrationTest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -10,18 +11,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
-import org.springframework.test.context.jdbc.Sql
 import java.math.BigDecimal
 
-@SpringBootTest
-@ActiveProfiles("test")
-@Sql(
-    scripts = ["/schema-reset.sql"],
-    executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD
-)
-class DepositServiceConcurrencyTest {
+class DepositServiceConcurrencyTest : AbstractIntegrationTest() {
 
     @Autowired
     private lateinit var createAccountService: CreateAccountService
