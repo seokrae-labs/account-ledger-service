@@ -12,6 +12,7 @@ import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
+import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
 import io.mockk.*
 import kotlinx.coroutines.test.runTest
@@ -25,11 +26,13 @@ class TransferServiceTest {
     private val ledgerEntryRepository: LedgerEntryRepository = mockk()
     private val transferRepository: TransferRepository = mockk()
     private val transactionExecutor: TransactionExecutor = mockk()
+    private val transferAuditRepository: TransferAuditRepository = mockk()
     private val service = TransferService(
         accountRepository,
         ledgerEntryRepository,
         transferRepository,
-        transactionExecutor
+        transactionExecutor,
+        transferAuditRepository
     )
 
     @Test
@@ -89,6 +92,9 @@ class TransferServiceTest {
         // Ledger entries
         coEvery { ledgerEntryRepository.saveAll(any()) } returns mockk()
 
+        // Audit event
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
+
         // when
         val result = service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
 
@@ -100,6 +106,7 @@ class TransferServiceTest {
         coVerify(exactly = 2) { accountRepository.save(any()) }
         coVerify(exactly = 1) { ledgerEntryRepository.saveAll(any()) }
         coVerify(exactly = 2) { transferRepository.save(any()) }
+        coVerify(exactly = 1) { transferAuditRepository.save(any()) }
     }
 
     @Test
@@ -354,6 +361,7 @@ class TransferServiceTest {
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
         coEvery { accountRepository.save(any()) } returns mockk()
         coEvery { ledgerEntryRepository.saveAll(any()) } returns mockk()
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when
         val result = service.execute(idempotencyKey, fromAccountId, toAccountId, amount, description)
@@ -413,6 +421,7 @@ class TransferServiceTest {
 
         val ledgerEntriesSlot = slot<List<LedgerEntry>>()
         coEvery { ledgerEntryRepository.saveAll(capture(ledgerEntriesSlot)) } returns mockk()
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when
         service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
@@ -550,6 +559,7 @@ class TransferServiceTest {
         coEvery { accountRepository.findByIdsForUpdate(capture(sortedIdsSlot)) } returns listOf(toAccount, fromAccount)
         coEvery { accountRepository.save(any()) } returns mockk()
         coEvery { ledgerEntryRepository.saveAll(any()) } returns mockk()
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when
         service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
@@ -590,38 +600,46 @@ class TransferServiceTest {
             status = TransferStatus.PENDING,
             description = null
         )
+        val failedTransfer = pendingTransfer.fail("Insufficient balance")
 
+        // Fast path: null
+        // Double-check in main tx: null
+        // Failure tx: null (PENDING rolled back)
         var findCallCount = 0
         coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
             findCallCount++
             null
         }
 
-        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
-            firstArg<suspend () -> Transfer>().invoke()
+        // Transaction execution: 1st = main tx (fails), 2nd = failure tx (succeeds)
+        var txCallCount = 0
+        coEvery { transactionExecutor.execute<Any>(any()) } coAnswers {
+            txCallCount++
+            firstArg<suspend () -> Any>().invoke()
         }
 
-        coEvery { transferRepository.save(any()) } returns pendingTransfer andThenAnswer {
-            val transfer = firstArg<Transfer>()
-            transfer
-        }
+        coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when & then
         val exception = assertThrows<InsufficientBalanceException> {
             service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
         }
 
+        // Verify 2 transactions executed (main + failure)
+        assert(txCallCount == 2) { "Expected 2 transactions, got $txCallCount" }
+
         // Verify FAILED transfer was saved
         val transferSlot = mutableListOf<Transfer>()
         coVerify { transferRepository.save(capture(transferSlot)) }
 
-        val failedTransfer = transferSlot.find { it.status == TransferStatus.FAILED }
-        assert(failedTransfer != null) { "FAILED transfer should be saved" }
-        assert(failedTransfer?.failureReason != null) { "Failure reason should be recorded" }
-        assert(failedTransfer?.failureReason?.contains("Insufficient balance") == true) {
-            "Failure reason should contain 'Insufficient balance', got: ${failedTransfer?.failureReason}"
-        }
+        val failedTransferSaved = transferSlot.find { it.status == TransferStatus.FAILED }
+        assert(failedTransferSaved != null) { "FAILED transfer should be saved" }
+        assert(failedTransferSaved?.failureReason != null) { "Failure reason should be recorded" }
+
+        // Verify audit event recorded
+        coVerify(exactly = 1) { transferAuditRepository.save(any()) }
     }
 
     @Test
@@ -649,38 +667,46 @@ class TransferServiceTest {
             status = TransferStatus.PENDING,
             description = null
         )
+        val failedTransfer = pendingTransfer.fail("From account not found: 1")
 
+        // Fast path: null
+        // Double-check in main tx: null
+        // Failure tx: null (PENDING rolled back)
         var findCallCount = 0
         coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
             findCallCount++
             null
         }
 
-        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
-            firstArg<suspend () -> Transfer>().invoke()
+        // Transaction execution: 1st = main tx (fails), 2nd = failure tx (succeeds)
+        var txCallCount = 0
+        coEvery { transactionExecutor.execute<Any>(any()) } coAnswers {
+            txCallCount++
+            firstArg<suspend () -> Any>().invoke()
         }
 
-        coEvery { transferRepository.save(any()) } returns pendingTransfer andThenAnswer {
-            val transfer = firstArg<Transfer>()
-            transfer
-        }
+        coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(toAccount)
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when & then
         val exception = assertThrows<AccountNotFoundException> {
             service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
         }
 
+        // Verify 2 transactions executed (main + failure)
+        assert(txCallCount == 2) { "Expected 2 transactions, got $txCallCount" }
+
         // Verify FAILED transfer was saved
         val transferSlot = mutableListOf<Transfer>()
         coVerify { transferRepository.save(capture(transferSlot)) }
 
-        val failedTransfer = transferSlot.find { it.status == TransferStatus.FAILED }
-        assert(failedTransfer != null) { "FAILED transfer should be saved" }
-        assert(failedTransfer?.failureReason != null) { "Failure reason should be recorded" }
-        assert(failedTransfer?.failureReason?.contains("From account not found") == true) {
-            "Failure reason should contain 'From account not found', got: ${failedTransfer?.failureReason}"
-        }
+        val failedTransferSaved = transferSlot.find { it.status == TransferStatus.FAILED }
+        assert(failedTransferSaved != null) { "FAILED transfer should be saved" }
+        assert(failedTransferSaved?.failureReason != null) { "Failure reason should be recorded" }
+
+        // Verify audit event recorded
+        coVerify(exactly = 1) { transferAuditRepository.save(any()) }
     }
 
 }
