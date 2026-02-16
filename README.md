@@ -777,6 +777,15 @@ account-ledger-service/
 
 **전체 이슈**: [GitHub Issues](https://github.com/seokrae-labs/account-ledger-service/issues)
 
+## 문서
+
+### 아키텍처 가이드
+- **[Suspend 함수 분석 & Best Practice](docs/SUSPEND_BEST_PRACTICES.md)**: 프로젝트 내부 구현 상세 분석 (레이어별 Suspend 심층 분석, 트랜잭션 관리, Flow 처리 등)
+- **[Java 개발자를 위한 Suspend 가이드](docs/SUSPEND_FOR_JAVA_DEVELOPERS.md)**: Blocking I/O, CompletableFuture, Reactor와 비교하며 Kotlin Coroutines 빠르게 이해하기 (Virtual Threads 비교 포함)
+
+### POC 및 연구
+- **[Suspend 함수 검증 POC 결과](docs/POC_SUSPEND_VALIDATION_RESULT.md)**: ArchUnit 기반 Continuation 파라미터 감지 방식 검증 결과 (100% 정확도)
+
 ## 라이선스
 
 이 프로젝트는 학습 및 포트폴리오 목적으로 작성되었습니다.
