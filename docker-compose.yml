@@ -32,6 +32,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-ledger123}
       R2DBC_URL: r2dbc:postgresql://postgres:5432/${DB_NAME:-ledger}
       JDBC_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-ledger}
+      JWT_SECRET: ${JWT_SECRET}
 
 volumes:
   postgres-data:

@@ -29,6 +29,10 @@ spring:
   flyway:
     clean-disabled: true  # Prevent accidental data loss in production
 
+app:
+  security:
+    jwt-secret: ${JWT_SECRET}  # No default value - must be provided via environment variable
+
 server:
   shutdown: graceful
 
