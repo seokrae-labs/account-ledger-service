@@ -2,6 +2,7 @@ package com.labs.ledger.adapter.`in`.web
 
 import org.springframework.restdocs.webtestclient.WebTestClientRestDocumentation.document
 import com.labs.ledger.RestDocsConfiguration
+import com.labs.ledger.support.TestSecurityConfig
 import com.labs.ledger.application.port.`in`.GetTransfersUseCase
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
@@ -17,6 +18,8 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest
+import org.springframework.context.annotation.ComponentScan
+import org.springframework.context.annotation.FilterType
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.restdocs.headers.HeaderDocumentation.headerWithName
@@ -29,9 +32,15 @@ import org.springframework.restdocs.request.RequestDocumentation.queryParameters
 import org.springframework.test.web.reactive.server.WebTestClient
 import java.math.BigDecimal
 
-@WebFluxTest(TransferController::class)
+@WebFluxTest(
+    controllers = [TransferController::class],
+    excludeFilters = [ComponentScan.Filter(
+        type = FilterType.REGEX,
+        pattern = ["com\\.labs\\.ledger\\.infrastructure\\.security\\..*"]
+    )]
+)
 @AutoConfigureRestDocs
-@Import(GlobalExceptionHandler::class, RestDocsConfiguration::class)
+@Import(GlobalExceptionHandler::class, RestDocsConfiguration::class, TestSecurityConfig::class)
 class TransferControllerTest {
 
     @Autowired

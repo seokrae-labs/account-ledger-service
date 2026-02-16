@@ -9,6 +9,7 @@ import org.springframework.dao.DataAccessException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.bind.support.WebExchangeBindException
@@ -119,6 +120,18 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(
                 error = "METHOD_NOT_ALLOWED",
                 message = "HTTP method ${e.httpMethod} is not supported for this endpoint. Allowed methods: $allowedMethods",
+                traceId = getTraceId()
+            ))
+    }
+
+    @ExceptionHandler(AccessDeniedException::class)
+    fun handleAccessDenied(e: AccessDeniedException): ResponseEntity<ErrorResponse> {
+        logger.warn { "Access denied: ${e.message}" }
+        return ResponseEntity
+            .status(HttpStatus.FORBIDDEN)
+            .body(ErrorResponse(
+                error = "ACCESS_DENIED",
+                message = "Access is denied. You do not have permission to access this resource.",
                 traceId = getTraceId()
             ))
     }

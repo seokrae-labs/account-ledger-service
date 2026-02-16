@@ -6,6 +6,7 @@ import org.springframework.dao.DataAccessException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.server.MethodNotAllowedException
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.server.ServerWebInputException
@@ -172,6 +173,20 @@ class GlobalExceptionHandlerTest {
         assert(allowHeader?.contains("GET") == true)
         assert(allowHeader?.contains("POST") == true)
         assert(allowHeader?.contains("PUT") == true)
+    }
+
+    @Test
+    fun `AccessDeniedException 처리 - 403 Forbidden`() {
+        // given
+        val exception = AccessDeniedException("Access is denied")
+
+        // when
+        val response = handler.handleAccessDenied(exception)
+
+        // then
+        assert(response.statusCode == HttpStatus.FORBIDDEN)
+        assert(response.body?.error == "ACCESS_DENIED")
+        assert(response.body?.message == "Access is denied. You do not have permission to access this resource.")
     }
 
     @Test
