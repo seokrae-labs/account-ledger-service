@@ -13,6 +13,7 @@ import com.labs.ledger.domain.port.TransferUseCase
 import com.labs.ledger.support.AbstractIntegrationTest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
@@ -29,6 +30,12 @@ import kotlin.system.measureTimeMillis
  * 4. 응답 시간 개선 (50ms 목표)
  */
 class TransferMemoryCacheIntegrationTest : AbstractIntegrationTest() {
+
+    @AfterEach
+    fun waitForAsyncCompletion() = runBlocking {
+        // Wait for background async persistence to complete before next test
+        delay(500)
+    }
 
     @Autowired
     private lateinit var transferUseCase: TransferUseCase

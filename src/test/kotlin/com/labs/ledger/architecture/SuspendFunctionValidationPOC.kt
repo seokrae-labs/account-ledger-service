@@ -89,6 +89,7 @@ class SuspendFunctionValidationPOC {
         methods()
             .that().areDeclaredInClassesThat().resideInAPackage("..domain.port..")
             .and().areDeclaredInClassesThat().areInterfaces()  // 인터페이스만 (data class 제외)
+            .and().areDeclaredInClassesThat().haveSimpleNameNotEndingWith("FailureRegistry")  // In-memory cache, suspend 불필요
             .and().arePublic()
             .and().doNotHaveName("equals")  // Object 메서드 제외
             .and().doNotHaveName("hashCode")

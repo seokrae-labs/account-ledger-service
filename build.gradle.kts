@@ -108,6 +108,7 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    maxParallelForks = 1  // Sequential execution to avoid TRUNCATE deadlock
 }
 
 // Generate build-info for Actuator /info endpoint
