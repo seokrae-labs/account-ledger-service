@@ -4,6 +4,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 @DisplayName("JwtTokenProvider 단위 테스트")
 class JwtTokenProviderTest {
@@ -131,5 +132,32 @@ class JwtTokenProviderTest {
 
         // then
         assertThat(isValid).isFalse()
+    }
+
+    @Test
+    fun `SecurityProperties는 32자 미만 secret을 거부한다`() {
+        // when & then
+        val exception = assertThrows<IllegalArgumentException> {
+            SecurityProperties(
+                jwtSecret = "too-short-secret",  // 16 characters < 32
+                jwtExpirationMs = 3600000
+            )
+        }
+
+        assertThat(exception.message)
+            .contains("must be at least 32 characters")
+            .contains("256 bits")
+    }
+
+    @Test
+    fun `SecurityProperties는 정확히 32자 secret을 허용한다`() {
+        // when
+        val properties = SecurityProperties(
+            jwtSecret = "a".repeat(32),  // Exactly 32 characters
+            jwtExpirationMs = 3600000
+        )
+
+        // then
+        assertThat(properties.jwtSecret).hasSize(32)
     }
 }

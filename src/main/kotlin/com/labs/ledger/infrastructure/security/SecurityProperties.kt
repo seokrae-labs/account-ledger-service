@@ -20,4 +20,29 @@ data class SecurityProperties(
      * 기본값: 86400000 (24시간)
      */
     val jwtExpirationMs: Long = 86400000
-)
+) {
+    init {
+        require(jwtSecret.length >= 32) {
+            "JWT secret must be at least 32 characters (256 bits) for HS256 algorithm. Current length: ${jwtSecret.length}"
+        }
+    }
+
+    companion object {
+        /**
+         * Placeholder 패턴 감지: 운영 환경에서 안전하지 않은 기본값 차단
+         */
+        fun isPlaceholderSecret(secret: String): Boolean {
+            val lowercaseSecret = secret.lowercase()
+            val dangerousPatterns = listOf(
+                "change-this",
+                "dev-only",
+                "default",
+                "example",
+                "placeholder",
+                "test-secret",
+                "sample"
+            )
+            return dangerousPatterns.any { pattern -> lowercaseSecret.contains(pattern) }
+        }
+    }
+}
