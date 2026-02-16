@@ -10,21 +10,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: ledger
-          POSTGRES_USER: ledger
-          POSTGRES_PASSWORD: ledger123
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,13 +25,6 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run tests with coverage
-        env:
-          SPRING_R2DBC_URL: r2dbc:postgresql://localhost:5432/ledger
-          SPRING_R2DBC_USERNAME: ledger
-          SPRING_R2DBC_PASSWORD: ledger123
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/ledger
-          SPRING_DATASOURCE_USERNAME: ledger
-          SPRING_DATASOURCE_PASSWORD: ledger123
         run: |
           set -o pipefail
           mkdir -p build/reports/kover
