@@ -70,6 +70,10 @@ dependencies {
     // Spring REST Docs + OpenAPI 3.0 spec generation
     testImplementation("org.springframework.restdocs:spring-restdocs-webtestclient")
     testImplementation("com.epages:restdocs-api-spec-webtestclient:0.18.4")
+
+    // Kotest Property-based Testing
+    testImplementation("io.kotest:kotest-property:5.9.1")
+    testImplementation("io.kotest:kotest-assertions-core:5.9.1")
 }
 
 tasks.withType<KotlinCompile> {
