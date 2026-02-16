@@ -5,6 +5,7 @@ import com.labs.ledger.adapter.out.persistence.repository.DeadLetterEventEntityR
 import com.labs.ledger.domain.model.DeadLetterEvent
 import com.labs.ledger.domain.model.DeadLetterEventType
 import com.labs.ledger.domain.port.DeadLetterQueueRepository
+import io.r2dbc.postgresql.codec.Json
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import org.springframework.stereotype.Component
@@ -43,7 +44,7 @@ class DeadLetterQueuePersistenceAdapter(
             id = domain.id,
             idempotencyKey = domain.idempotencyKey,
             eventType = domain.eventType.name,
-            payload = domain.payload,
+            payload = Json.of(domain.payload),
             failureReason = domain.failureReason,
             retryCount = domain.retryCount,
             createdAt = domain.createdAt,
@@ -58,7 +59,7 @@ class DeadLetterQueuePersistenceAdapter(
             id = entity.id,
             idempotencyKey = entity.idempotencyKey,
             eventType = DeadLetterEventType.valueOf(entity.eventType),
-            payload = entity.payload,
+            payload = entity.payload.asString(),
             failureReason = entity.failureReason,
             retryCount = entity.retryCount,
             createdAt = entity.createdAt,
