@@ -14,12 +14,12 @@
 | 카테고리 | 기술 | 버전 |
 |---------|------|------|
 | Language | Kotlin | 1.9.25 |
-| Framework | Spring Boot | 3.4.2 |
+| Framework | Spring Boot | **3.4.13** |
 | Reactive | WebFlux + Coroutines | 1.9.0 |
 | Persistence | R2DBC + PostgreSQL | 1.0.7 / 16 |
 | Build Tool | Gradle | 8.11.1 |
 | JDK | OpenJDK | 21 |
-| Testing | JUnit 5 + MockK + Spring Test | - |
+| Testing | JUnit 5 + Testcontainers + Spring Test | - |
 | Coverage | Kover | 0.9.4 |
 
 ## 아키텍처
@@ -155,6 +155,7 @@ docker run -d \
   -e DB_PASSWORD=ledger123 \
   -e R2DBC_URL=r2dbc:postgresql://host.docker.internal:5432/ledger \
   -e JDBC_URL=jdbc:postgresql://host.docker.internal:5432/ledger \
+  -e JWT_SECRET=$(openssl rand -base64 32) \
   account-ledger-service:latest
 ```
 
@@ -176,7 +177,7 @@ curl http://localhost:8080/actuator/health/readiness
 |---------|------|----------|-----------|------|
 | **dev** | 로컬 개발 | DEBUG | 5-10 | Flyway clean 허용, 상세 로깅 |
 | **prod** | 프로덕션 | INFO | 20-50 | 커넥션 풀 최적화, Graceful Shutdown |
-| **test** | 자동화 테스트 | DEBUG | 2-5 | 로컬 PostgreSQL 기반, 빠른 시작 |
+| **test** | 자동화 테스트 | DEBUG | 2-5 | **Testcontainers 기반**, Docker만 필요 |
 
 ### 환경변수 설정
 
@@ -188,6 +189,7 @@ curl http://localhost:8080/actuator/health/readiness
 | `DB_PASSWORD` | 데이터베이스 비밀번호 | `ledger123` |
 | `R2DBC_URL` | R2DBC 연결 URL | `r2dbc:postgresql://localhost:5432/ledger` |
 | `JDBC_URL` | JDBC 연결 URL (Flyway용) | `jdbc:postgresql://localhost:5432/ledger` |
+| `JWT_SECRET` | JWT 서명 비밀키 (최소 32자) | `dev-only-secret-...` (dev), **필수** (prod) |
 
 **설정 방법:**
 1. `.env.example`을 `.env`로 복사
@@ -402,13 +404,24 @@ readinessProbe:
 
 ## API 엔드포인트
 
+### API 문서
+
+**Swagger UI**: http://localhost:8080/swagger-ui.html
+**OpenAPI Spec**: http://localhost:8080/v3/api-docs
+
 ### 엔드포인트 요약
+
+**8개 엔드포인트 제공**
 
 | Method | Path | Status | 설명 |
 |--------|------|--------|------|
+| GET | `/api/accounts` | 200 | 계좌 목록 조회 (페이지네이션) |
 | POST | `/api/accounts` | 201 | 계좌 생성 |
 | GET | `/api/accounts/{id}` | 200 | 계좌 조회 |
 | POST | `/api/accounts/{id}/deposits` | 200 | 입금 |
+| GET | `/api/accounts/{id}/ledger-entries` | 200 | 원장 내역 조회 (페이지네이션) |
+| PATCH | `/api/accounts/{id}/status` | 200 | 계좌 상태 변경 |
+| GET | `/api/transfers` | 200 | 이체 목록 조회 (페이지네이션) |
 | POST | `/api/transfers` | 201 | 이체 |
 
 ### 1. 계좌 생성
@@ -569,7 +582,7 @@ curl "http://localhost:8080/api/transfers?page=0&size=10"
 }
 ```
 
-**Error Codes**
+**Error Codes** (12개+)
 
 | HTTP Status | Error Code | 설명 |
 |-------------|-----------|------|
@@ -577,10 +590,17 @@ curl "http://localhost:8080/api/transfers?page=0&size=10"
 | 400 | `INVALID_ACCOUNT_STATUS` | 계좌 상태 오류 (폐쇄된 계좌 등) |
 | 400 | `INVALID_AMOUNT` | 유효하지 않은 금액 (음수, 0 등) |
 | 400 | `INVALID_REQUEST` | 잘못된 요청 파라미터 |
+| 400 | `INVALID_INPUT` | 잘못된 요청 본문 또는 파라미터 |
+| 400 | `VALIDATION_FAILED` | 요청 검증 실패 |
+| 401 | `UNAUTHORIZED` | 인증 실패 |
+| 403 | `ACCESS_DENIED` | 권한 없음 |
 | 404 | `ACCOUNT_NOT_FOUND` | 계좌를 찾을 수 없음 |
+| 405 | `METHOD_NOT_ALLOWED` | 허용되지 않은 HTTP 메서드 |
 | 409 | `DUPLICATE_TRANSFER` | 중복 이체 요청 (동일한 Idempotency-Key) |
 | 409 | `OPTIMISTIC_LOCK_FAILED` | 동시 수정 감지 (재시도 필요) |
+| 409 | `INVALID_TRANSFER_STATUS_TRANSITION` | 유효하지 않은 이체 상태 전환 |
 | 500 | `INTERNAL_ERROR` | 내부 서버 오류 |
+| 503 | `DATABASE_ERROR` | 데이터베이스 일시적 오류 |
 
 ## 핵심 설계 패턴
 
@@ -648,11 +668,10 @@ val second = accountRepository.findByIdForUpdate(secondId)
 
 ### 실행
 
-테스트는 **localhost:5432 PostgreSQL**을 사용합니다. 먼저 테스트용 DB를 실행한 뒤 테스트를 실행하세요.
+테스트는 **Testcontainers**를 사용합니다. Docker만 실행 중이면 테스트가 자동으로 PostgreSQL 컨테이너를 시작합니다.
 
 ```bash
-# 테스트용 DB 실행
-docker compose up -d postgres
+# 전제조건: Docker 실행 중이어야 함
 
 # 전체 테스트 실행
 ./gradlew test
@@ -673,11 +692,17 @@ docker compose up -d postgres
 
 ### 테스트 구성
 
+**총 33개 테스트 파일**
+
 | 계층 | 파일 수 | 설명 |
 |-----|--------|------|
-| Domain | 3 | Account, LedgerEntry, Transfer 단위 테스트 |
-| Service | 4 | AccountService, TransferService 통합 테스트 |
+| Domain | 6 | Account, LedgerEntry, Transfer 단위/속성 테스트 |
+| Service | 12 | AccountService, TransferService 통합/동시성 테스트 |
 | Controller | 2 | AccountController, TransferController API 테스트 |
+| Persistence | 4 | Adapter 통합 테스트 |
+| Architecture | 6 | ArchUnit 기반 아키텍처 규칙 검증 |
+| Infrastructure | 2 | Security, Exception Handler 테스트 |
+| Support | 1 | AbstractIntegrationTest (Testcontainers 기반) |
 
 ## 프로젝트 구조
 
@@ -692,73 +717,47 @@ account-ledger-service/
 │   │   │   │   │   ├── TransferController.kt
 │   │   │   │   │   ├── GlobalExceptionHandler.kt
 │   │   │   │   │   └── dto/
-│   │   │   │   │       ├── AccountDto.kt
-│   │   │   │   │       ├── TransferDto.kt
-│   │   │   │   │       └── ErrorResponse.kt
 │   │   │   │   └── out/persistence/
-│   │   │   │       ├── AccountPersistenceAdapter.kt
-│   │   │   │       ├── LedgerPersistenceAdapter.kt
-│   │   │   │       ├── TransferPersistenceAdapter.kt
-│   │   │   │       ├── entity/
-│   │   │   │       │   ├── AccountEntity.kt
-│   │   │   │       │   ├── LedgerEntryEntity.kt
-│   │   │   │       │   └── TransferEntity.kt
-│   │   │   │       └── repository/
-│   │   │   │           ├── R2dbcAccountRepository.kt
-│   │   │   │           ├── R2dbcLedgerRepository.kt
-│   │   │   │           └── R2dbcTransferRepository.kt
+│   │   │   │       ├── adapter/          # Persistence Adapters
+│   │   │   │       ├── entity/           # JPA/R2DBC Entities
+│   │   │   │       └── repository/       # Spring Data Repositories
 │   │   │   ├── application/
-│   │   │   │   ├── service/
-│   │   │   │   │   ├── AccountService.kt
-│   │   │   │   │   └── TransferService.kt
-│   │   │   │   └── port/
-│   │   │   │       ├── in/
-│   │   │   │       │   ├── CreateAccountUseCase.kt
-│   │   │   │       │   ├── GetAccountUseCase.kt
-│   │   │   │       │   ├── DepositUseCase.kt
-│   │   │   │       │   └── TransferUseCase.kt
-│   │   │   │       └── out/
-│   │   │   │           ├── LoadAccountPort.kt
-│   │   │   │           ├── SaveAccountPort.kt
-│   │   │   │           ├── LoadLedgerPort.kt
-│   │   │   │           ├── SaveLedgerPort.kt
-│   │   │   │           ├── LoadTransferPort.kt
-│   │   │   │           └── SaveTransferPort.kt
+│   │   │   │   ├── service/              # Use Case Implementations
+│   │   │   │   └── support/              # InMemoryFailureRegistry 등
 │   │   │   ├── domain/
-│   │   │   │   ├── model/
-│   │   │   │   │   ├── Account.kt
-│   │   │   │   │   ├── LedgerEntry.kt
-│   │   │   │   │   └── Transfer.kt
-│   │   │   │   └── exception/
-│   │   │   │       ├── AccountNotFoundException.kt
-│   │   │   │       ├── InsufficientBalanceException.kt
-│   │   │   │       ├── InvalidAccountStatusException.kt
-│   │   │   │       ├── InvalidAmountException.kt
-│   │   │   │       ├── DuplicateTransferException.kt
-│   │   │   │       └── OptimisticLockException.kt
+│   │   │   │   ├── model/                # Domain Models
+│   │   │   │   ├── port/                 # Input/Output Ports (Interfaces)
+│   │   │   │   └── exception/            # Domain Exceptions (7개)
 │   │   │   ├── infrastructure/
-│   │   │   │   └── config/
-│   │   │   │       └── R2dbcConfiguration.kt
-│   │   │   └── AccountLedgerServiceApplication.kt
+│   │   │   │   ├── config/               # R2DBC, OpenAPI 등
+│   │   │   │   ├── security/             # JWT, SecurityConfig, Filters
+│   │   │   │   └── web/                  # RequestLoggingFilter 등
+│   │   │   └── LedgerApplication.kt      # Main Application
 │   │   └── resources/
 │   │       ├── application.yml
-│   │       └── schema.sql
+│   │       ├── application-dev.yml
+│   │       ├── application-prod.yml
+│   │       ├── application-test.yml
+│   │       └── db/migration/             # Flyway SQL scripts
 │   └── test/
 │       └── kotlin/com/labs/ledger/
-│           ├── domain/model/
-│           │   ├── AccountTest.kt
-│           │   ├── LedgerEntryTest.kt
-│           │   └── TransferTest.kt
-│           ├── application/service/
-│           │   ├── AccountServiceTest.kt
-│           │   ├── TransferServiceTest.kt
-│           │   ├── DepositConcurrencyTest.kt
-│           │   └── TransferConcurrencyTest.kt
-│           └── adapter/in/web/
-│               ├── AccountControllerTest.kt
-│               └── TransferControllerTest.kt
+│           ├── adapter/
+│           │   ├── in/web/               # Controller Tests (2)
+│           │   └── out/persistence/      # Persistence Tests (4)
+│           ├── application/
+│           │   ├── service/              # Service Tests (11)
+│           │   └── support/              # Support Tests (1)
+│           ├── architecture/             # ArchUnit Tests (6)
+│           ├── domain/model/             # Domain Tests (6)
+│           ├── infrastructure/security/  # Security Tests (2)
+│           └── support/                  # AbstractIntegrationTest
+├── docs/                                 # Architecture docs
+│   ├── SUSPEND_BEST_PRACTICES.md
+│   ├── SUSPEND_FOR_JAVA_DEVELOPERS.md
+│   └── POC_SUSPEND_VALIDATION_RESULT.md
 ├── build.gradle.kts
 ├── docker-compose.yml
+├── Dockerfile
 └── README.md
 ```
 
@@ -768,14 +767,18 @@ account-ledger-service/
 
 ### Completed Phases
 
-- ✅ **Phase 1**: 프로젝트 기반 설정 (#1)
-- ✅ **Phase 2**: 도메인 모델 (#2~#4)
-- ✅ **Phase 3**: 영속성 레이어 (#5~#7)
-- ✅ **Phase 4**: 애플리케이션 서비스 (#8~#10)
-- ✅ **Phase 5**: Web API (#11~#13)
-- ✅ **Phase 6**: 품질 개선 (#14~#16)
+- ✅ **Phase 1**: 프로젝트 기반 설정 (Hexagonal Architecture, R2DBC, Testcontainers)
+- ✅ **Phase 2**: 도메인 모델 (Account, Transfer, LedgerEntry)
+- ✅ **Phase 3**: 영속성 레이어 (Adapter Pattern, Repository)
+- ✅ **Phase 4**: 애플리케이션 서비스 (Use Cases, Transaction Management)
+- ✅ **Phase 5**: Web API (REST Controllers, DTO, Exception Handler)
+- ✅ **Phase 6**: 품질 개선 (Kover, Integration Tests, README)
+- ✅ **Phase 7**: 보안 강화 (JWT 인증, Spring Security, Idempotency)
+- ✅ **Phase 8**: 아키텍처 검증 (ArchUnit, Architecture Tests, Documentation)
+- ✅ **Phase 9**: 안정성 강화 (Retry Logic, DLQ, In-Memory Cache)
 
 **전체 이슈**: [GitHub Issues](https://github.com/seokrae-labs/account-ledger-service/issues)
+**최근 PR**: [Pull Requests](https://github.com/seokrae-labs/account-ledger-service/pulls)
 
 ## 문서
 
@@ -792,6 +795,8 @@ account-ledger-service/
 
 ---
 
-**마지막 업데이트**: 2026-02-09
+**마지막 업데이트**: 2026-02-16
+**Spring Boot**: 3.4.13
 **커버리지**: 93.53%
+**테스트**: 33개
 **상태**: ✅ 전체 개발 완료
