@@ -82,4 +82,29 @@ class SecurityConfigIntegrationTest : AbstractIntegrationTest() {
             .exchange()
             .expectStatus().isUnauthorized
     }
+
+    @Test
+    fun `api dev 엔드포인트는 인증 없이 접근 가능하다 (dev 프로필에서만 활성)`() {
+        // given: DevTokenController는 test 프로필에서 비활성화되어 있음
+
+        // when & then: 인증 없이 접근 시 404 (빈 없음)
+        // 401이 아닌 404가 나오면 permitAll이 동작하는 것
+        webTestClient.post()
+            .uri("/api/dev/tokens")
+            .bodyValue(mapOf("userId" to "test", "username" to "testuser"))
+            .exchange()
+            .expectStatus().isNotFound // DevTokenController 빈이 없으므로 404
+    }
+
+    @Test
+    fun `api dev 경로는 SecurityConfig에서 permitAll로 설정되어 있다`() {
+        // given: 인증 없이 /api/dev/** 경로 접근
+
+        // when & then: 401 Unauthorized가 아닌 다른 상태 코드 (404 등)
+        // 이는 인증 필터를 통과했음을 의미
+        webTestClient.get()
+            .uri("/api/dev/nonexistent")
+            .exchange()
+            .expectStatus().isNotFound // 404 = 인증 통과 + 경로 없음
+    }
 }

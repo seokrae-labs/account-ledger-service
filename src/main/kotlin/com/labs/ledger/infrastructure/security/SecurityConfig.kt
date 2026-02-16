@@ -40,6 +40,9 @@ class SecurityConfig(
                     // Swagger UI 공개
                     .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**").permitAll()
 
+                    // Dev 토큰 발급 엔드포인트 (dev 프로필에서만 빈 생성됨)
+                    .pathMatchers("/api/dev/**").permitAll()
+
                     // API 엔드포인트는 인증 필요
                     .pathMatchers("/api/**").authenticated()
 
