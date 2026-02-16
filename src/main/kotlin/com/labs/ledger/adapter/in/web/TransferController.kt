@@ -1,7 +1,7 @@
 package com.labs.ledger.adapter.`in`.web
 
 import com.labs.ledger.adapter.`in`.web.dto.*
-import com.labs.ledger.application.port.`in`.GetTransfersUseCase
+import com.labs.ledger.domain.port.GetTransfersUseCase
 import com.labs.ledger.domain.port.TransferUseCase
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus

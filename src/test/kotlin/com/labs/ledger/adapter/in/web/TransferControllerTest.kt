@@ -3,7 +3,7 @@ package com.labs.ledger.adapter.`in`.web
 import org.springframework.restdocs.webtestclient.WebTestClientRestDocumentation.document
 import com.labs.ledger.RestDocsConfiguration
 import com.labs.ledger.support.TestSecurityConfig
-import com.labs.ledger.application.port.`in`.GetTransfersUseCase
+import com.labs.ledger.domain.port.GetTransfersUseCase
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.exception.InsufficientBalanceException
@@ -433,7 +433,7 @@ class TransferControllerTest {
                 description = "Refund"
             )
         )
-        val page = com.labs.ledger.application.port.`in`.TransfersPage(
+        val page = com.labs.ledger.domain.port.TransfersPage(
             transfers = transfers,
             page = 0,
             size = 20,

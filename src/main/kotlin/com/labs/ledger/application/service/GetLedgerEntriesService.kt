@@ -1,13 +1,11 @@
 package com.labs.ledger.application.service
 
-import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
-import com.labs.ledger.application.port.`in`.LedgerEntriesPage
+import com.labs.ledger.domain.port.GetLedgerEntriesUseCase
+import com.labs.ledger.domain.port.LedgerEntriesPage
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.LedgerEntryRepository
-import org.springframework.stereotype.Service
 
-@Service
 class GetLedgerEntriesService(
     private val accountRepository: AccountRepository,
     private val ledgerEntryRepository: LedgerEntryRepository

@@ -1,4 +1,4 @@
-package com.labs.ledger.application.port.`in`
+package com.labs.ledger.domain.port
 
 import com.labs.ledger.domain.model.Account
 
