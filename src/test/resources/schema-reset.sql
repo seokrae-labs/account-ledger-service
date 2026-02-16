@@ -1,6 +1,7 @@
 -- Reset test database state
 -- TRUNCATE is faster than DELETE and automatically handles CASCADE
 
+TRUNCATE TABLE transfer_dead_letter_queue CASCADE;
 TRUNCATE TABLE transfer_audit_events CASCADE;
 TRUNCATE TABLE transfers CASCADE;
 TRUNCATE TABLE ledger_entries CASCADE;
@@ -11,3 +12,4 @@ ALTER SEQUENCE accounts_id_seq RESTART WITH 1;
 ALTER SEQUENCE transfers_id_seq RESTART WITH 1;
 ALTER SEQUENCE ledger_entries_id_seq RESTART WITH 1;
 ALTER SEQUENCE transfer_audit_events_id_seq RESTART WITH 1;
+ALTER SEQUENCE transfer_dead_letter_queue_id_seq RESTART WITH 1;

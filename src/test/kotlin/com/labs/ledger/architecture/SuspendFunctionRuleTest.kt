@@ -103,6 +103,7 @@ class SuspendFunctionRuleTest {
             .and().doNotHaveName("equals")  // Object 메서드 제외
             .and().doNotHaveName("hashCode")
             .and().doNotHaveName("toString")
+            .and().doNotHaveName("isRetriable")  // RetryPolicy.isRetriable() - 단순 조건 체크, suspend 불필요
             .should(haveContinuationParameter())
             .because("Port는 non-blocking I/O를 위해 suspend 함수를 사용해야 합니다 (Hexagonal Architecture)")
             .check(classes)

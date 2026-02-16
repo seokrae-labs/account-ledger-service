@@ -6,6 +6,8 @@ import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidAmountException
+import com.labs.ledger.domain.model.DeadLetterEvent
+import com.labs.ledger.domain.model.DeadLetterEventType
 import com.labs.ledger.domain.model.LedgerEntry
 import com.labs.ledger.domain.model.LedgerEntryType
 import com.labs.ledger.domain.model.Transfer
@@ -13,7 +15,9 @@ import com.labs.ledger.domain.model.TransferAuditEvent
 import com.labs.ledger.domain.model.TransferAuditEventType
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
+import com.labs.ledger.domain.port.DeadLetterQueueRepository
 import com.labs.ledger.domain.port.LedgerEntryRepository
+import com.labs.ledger.domain.port.RetryPolicy
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
@@ -29,7 +33,9 @@ class TransferService(
     private val ledgerEntryRepository: LedgerEntryRepository,
     private val transferRepository: TransferRepository,
     private val transactionExecutor: TransactionExecutor,
-    private val transferAuditRepository: TransferAuditRepository
+    private val transferAuditRepository: TransferAuditRepository,
+    private val retryPolicy: RetryPolicy,
+    private val deadLetterQueueRepository: DeadLetterQueueRepository
 ) : TransferUseCase {
 
     override suspend fun execute(
@@ -167,8 +173,10 @@ class TransferService(
     /**
      * Persist transfer failure state and audit event in independent transaction
      *
-     * Design:
+     * Design (Phase 1 Enhancement):
      * - Runs in separate transaction (survives main tx rollback)
+     * - Retry with exponential backoff (3 attempts, 300ms total)
+     * - Dead Letter Queue (DLQ) fallback for final failures
      * - Upsert logic: update PENDING -> FAILED, or create new FAILED if PENDING was rolled back
      * - Records audit event in same transaction (atomic failure persistence)
      * - Logs but doesn't re-throw persistence errors (business exception takes precedence)
@@ -188,7 +196,8 @@ class TransferService(
         description: String?,
         cause: DomainException
     ) {
-        try {
+        // Retry with exponential backoff
+        val result = retryPolicy.execute {
             transactionExecutor.execute {
                 // Upsert FAILED state (handles main tx rollback)
                 val existing = transferRepository.findByIdempotencyKey(idempotencyKey)
@@ -228,11 +237,51 @@ class TransferService(
 
                 logger.warn { "Transfer failure persisted: key=$idempotencyKey, reason=${cause.message}" }
             }
-        } catch (persistError: Exception) {
-            // Log but don't re-throw - business exception takes precedence
-            logger.error(persistError) {
-                "Failed to persist failure state: key=$idempotencyKey, error=${persistError.message}"
+        }
+
+        // If all retries failed, send to Dead Letter Queue
+        if (result == null) {
+            try {
+                val dlqEvent = DeadLetterEvent(
+                    idempotencyKey = idempotencyKey,
+                    eventType = DeadLetterEventType.FAILURE_PERSISTENCE_FAILED,
+                    payload = buildDLQPayload(fromAccountId, toAccountId, amount, description, cause),
+                    failureReason = cause.message,
+                    retryCount = 3  // After 3 retries
+                )
+                deadLetterQueueRepository.save(dlqEvent)
+                logger.error {
+                    "Failed to persist failure after retries, sent to DLQ: key=$idempotencyKey"
+                }
+            } catch (dlqError: Exception) {
+                // Last resort: log only
+                logger.error(dlqError) {
+                    "CRITICAL: Failed to save to DLQ: key=$idempotencyKey, error=${dlqError.message}"
+                }
             }
         }
+    }
+
+    /**
+     * Build JSON payload for Dead Letter Queue
+     */
+    private fun buildDLQPayload(
+        fromAccountId: Long,
+        toAccountId: Long,
+        amount: BigDecimal,
+        description: String?,
+        cause: DomainException
+    ): String {
+        return """
+            {
+                "fromAccountId": $fromAccountId,
+                "toAccountId": $toAccountId,
+                "amount": "$amount",
+                "description": ${description?.let { "\"$it\"" } ?: "null"},
+                "originalException": "${cause::class.simpleName}",
+                "originalMessage": "${cause.message?.replace("\"", "\\\"") ?: "Unknown error"}",
+                "timestamp": "${java.time.LocalDateTime.now()}"
+            }
+        """.trimIndent()
     }
 }
