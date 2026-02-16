@@ -1,22 +1,24 @@
-package com.labs.ledger.infrastructure.util
+package com.labs.ledger.application.support
 
 import com.labs.ledger.domain.exception.OptimisticLockException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.delay
-import org.springframework.dao.OptimisticLockingFailureException
 
 private val logger = KotlinLogging.logger {}
 
 /**
  * Retry utility for handling optimistic locking conflicts in coroutine context.
  *
- * Automatically retries the given block when OptimisticLockingFailureException is thrown.
+ * Automatically retries the given block when OptimisticLockException is thrown.
  * Uses exponential backoff strategy between retries.
+ *
+ * Note: Spring's OptimisticLockingFailureException is translated to domain exception
+ * at the persistence adapter layer, so only domain exception handling is needed here.
  *
  * @param maxAttempts Maximum number of attempts (default: 3)
  * @param block The suspending function to retry
  * @return The result of the successful execution
- * @throws OptimisticLockingFailureException if all retry attempts are exhausted
+ * @throws OptimisticLockException if all retry attempts are exhausted
  */
 suspend fun <T> retryOnOptimisticLock(
     maxAttempts: Int = 3,
@@ -66,5 +68,5 @@ suspend fun <T> retryOnOptimisticLock(
 }
 
 private fun isRetryableOptimisticLockException(e: Throwable): Boolean {
-    return e is OptimisticLockingFailureException || e is OptimisticLockException
+    return e is OptimisticLockException
 }
