@@ -26,9 +26,9 @@ spring:
 
 springdoc:
   api-docs:
-    enabled: false  # Disabled: incompatible with Spring Boot 3.4.2 (path pattern error)
+    enabled: true
   swagger-ui:
-    enabled: false  # See Issue #104 for details
+    enabled: true
 
 logging:
   level:
