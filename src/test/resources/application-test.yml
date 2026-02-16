@@ -1,8 +1,6 @@
 spring:
   r2dbc:
-    url: r2dbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
+    # Testcontainers로 동적 주입 (AbstractIntegrationTest 참조)
     pool:
       enabled: true
       initial-size: 2
@@ -11,9 +9,7 @@ spring:
       max-acquire-time: 3s
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/ledger
-    username: ledger
-    password: ledger123
+    # Testcontainers로 동적 주입 (AbstractIntegrationTest 참조)
     driver-class-name: org.postgresql.Driver
 
   sql:
