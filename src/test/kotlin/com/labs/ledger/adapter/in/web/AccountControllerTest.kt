@@ -10,8 +10,8 @@ import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.LedgerEntry
 import com.labs.ledger.domain.model.LedgerEntryType
-import com.labs.ledger.application.port.`in`.GetAccountsUseCase
-import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
+import com.labs.ledger.domain.port.GetAccountsUseCase
+import com.labs.ledger.domain.port.GetLedgerEntriesUseCase
 import com.labs.ledger.domain.port.CreateAccountUseCase
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.GetAccountBalanceUseCase
@@ -313,7 +313,7 @@ class AccountControllerTest {
             Account(id = 1L, ownerName = "Alice", balance = BigDecimal("1000"), status = AccountStatus.ACTIVE, version = 0L),
             Account(id = 2L, ownerName = "Bob", balance = BigDecimal("2000"), status = AccountStatus.ACTIVE, version = 0L)
         )
-        val page = com.labs.ledger.application.port.`in`.AccountsPage(
+        val page = com.labs.ledger.domain.port.AccountsPage(
             accounts = accounts,
             page = 0,
             size = 20,
@@ -369,7 +369,7 @@ class AccountControllerTest {
                 description = "Initial deposit"
             )
         )
-        val page = com.labs.ledger.application.port.`in`.LedgerEntriesPage(
+        val page = com.labs.ledger.domain.port.LedgerEntriesPage(
             entries = entries,
             page = 0,
             size = 20,

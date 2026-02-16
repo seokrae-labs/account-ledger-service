@@ -1,10 +1,6 @@
 package com.labs.ledger.infrastructure.config
 
-import com.labs.ledger.application.service.CreateAccountService
-import com.labs.ledger.application.service.DepositService
-import com.labs.ledger.application.service.GetAccountBalanceService
-import com.labs.ledger.application.service.TransferService
-import com.labs.ledger.application.service.UpdateAccountStatusService
+import com.labs.ledger.application.service.*
 import com.labs.ledger.domain.port.*
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -56,5 +52,27 @@ class UseCaseConfig {
             transferRepository,
             transactionExecutor
         )
+    }
+
+    @Bean
+    fun getAccountsUseCase(
+        accountRepository: AccountRepository
+    ): GetAccountsUseCase {
+        return GetAccountsService(accountRepository)
+    }
+
+    @Bean
+    fun getLedgerEntriesUseCase(
+        accountRepository: AccountRepository,
+        ledgerEntryRepository: LedgerEntryRepository
+    ): GetLedgerEntriesUseCase {
+        return GetLedgerEntriesService(accountRepository, ledgerEntryRepository)
+    }
+
+    @Bean
+    fun getTransfersUseCase(
+        transferRepository: TransferRepository
+    ): GetTransfersUseCase {
+        return GetTransfersService(transferRepository)
     }
 }

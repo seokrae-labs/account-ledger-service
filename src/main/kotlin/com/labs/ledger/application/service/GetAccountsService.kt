@@ -1,11 +1,9 @@
 package com.labs.ledger.application.service
 
-import com.labs.ledger.application.port.`in`.AccountsPage
-import com.labs.ledger.application.port.`in`.GetAccountsUseCase
+import com.labs.ledger.domain.port.AccountsPage
+import com.labs.ledger.domain.port.GetAccountsUseCase
 import com.labs.ledger.domain.port.AccountRepository
-import org.springframework.stereotype.Service
 
-@Service
 class GetAccountsService(
     private val accountRepository: AccountRepository
 ) : GetAccountsUseCase {

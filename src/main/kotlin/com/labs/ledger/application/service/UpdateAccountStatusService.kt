@@ -6,7 +6,7 @@ import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.UpdateAccountStatusUseCase
-import com.labs.ledger.infrastructure.util.retryOnOptimisticLock
+import com.labs.ledger.application.support.retryOnOptimisticLock
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 private val logger = KotlinLogging.logger {}

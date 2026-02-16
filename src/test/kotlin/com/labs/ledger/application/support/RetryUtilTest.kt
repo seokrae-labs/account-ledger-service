@@ -1,11 +1,10 @@
-package com.labs.ledger.infrastructure.util
+package com.labs.ledger.application.support
 
 import com.labs.ledger.domain.exception.OptimisticLockException
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import org.springframework.dao.OptimisticLockingFailureException
 
 class RetryUtilTest {
 
@@ -25,24 +24,6 @@ class RetryUtilTest {
 
         assertEquals("ok", result)
         assertEquals(3, attempts)
-    }
-
-    @Test
-    fun `Spring OptimisticLockingFailureException 발생시 재시도 후 성공`() {
-        var attempts = 0
-
-        val result = runBlocking {
-            retryOnOptimisticLock(maxAttempts = 3) {
-                attempts++
-                if (attempts < 2) {
-                    throw OptimisticLockingFailureException("spring lock conflict")
-                }
-                "ok"
-            }
-        }
-
-        assertEquals("ok", result)
-        assertEquals(2, attempts)
     }
 
     @Test

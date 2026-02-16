@@ -8,7 +8,7 @@ import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
-import com.labs.ledger.infrastructure.util.retryOnOptimisticLock
+import com.labs.ledger.application.support.retryOnOptimisticLock
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.math.BigDecimal
 

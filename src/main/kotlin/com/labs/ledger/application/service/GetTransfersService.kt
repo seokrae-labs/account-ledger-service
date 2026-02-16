@@ -1,11 +1,9 @@
 package com.labs.ledger.application.service
 
-import com.labs.ledger.application.port.`in`.GetTransfersUseCase
-import com.labs.ledger.application.port.`in`.TransfersPage
+import com.labs.ledger.domain.port.GetTransfersUseCase
+import com.labs.ledger.domain.port.TransfersPage
 import com.labs.ledger.domain.port.TransferRepository
-import org.springframework.stereotype.Service
 
-@Service
 class GetTransfersService(
     private val transferRepository: TransferRepository
 ) : GetTransfersUseCase {

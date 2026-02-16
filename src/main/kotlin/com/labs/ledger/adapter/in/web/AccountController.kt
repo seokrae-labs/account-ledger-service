@@ -1,8 +1,8 @@
 package com.labs.ledger.adapter.`in`.web
 
 import com.labs.ledger.adapter.`in`.web.dto.*
-import com.labs.ledger.application.port.`in`.GetAccountsUseCase
-import com.labs.ledger.application.port.`in`.GetLedgerEntriesUseCase
+import com.labs.ledger.domain.port.GetAccountsUseCase
+import com.labs.ledger.domain.port.GetLedgerEntriesUseCase
 import com.labs.ledger.domain.port.CreateAccountUseCase
 import com.labs.ledger.domain.port.DepositUseCase
 import com.labs.ledger.domain.port.GetAccountBalanceUseCase

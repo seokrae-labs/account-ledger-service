@@ -91,6 +91,9 @@ dependencies {
     // Kotest Property-based Testing
     testImplementation("io.kotest:kotest-property:5.9.1")
     testImplementation("io.kotest:kotest-assertions-core:5.9.1")
+
+    // ArchUnit (Architecture Testing)
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
 }
 
 tasks.withType<KotlinCompile> {
