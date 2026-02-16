@@ -10,7 +10,9 @@ import com.labs.ledger.domain.model.LedgerEntryType
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
+import com.labs.ledger.domain.port.DeadLetterQueueRepository
 import com.labs.ledger.domain.port.LedgerEntryRepository
+import com.labs.ledger.domain.port.RetryPolicy
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
@@ -27,12 +29,16 @@ class TransferServiceTest {
     private val transferRepository: TransferRepository = mockk()
     private val transactionExecutor: TransactionExecutor = mockk()
     private val transferAuditRepository: TransferAuditRepository = mockk()
+    private val retryPolicy: RetryPolicy = mockk()
+    private val deadLetterQueueRepository: DeadLetterQueueRepository = mockk()
     private val service = TransferService(
         accountRepository,
         ledgerEntryRepository,
         transferRepository,
         transactionExecutor,
-        transferAuditRepository
+        transferAuditRepository,
+        retryPolicy,
+        deadLetterQueueRepository
     )
 
     @Test
@@ -251,6 +257,7 @@ class TransferServiceTest {
             status = TransferStatus.PENDING,
             description = null
         )
+        val failedTransfer = pendingTransfer.fail("From account not found: 1")
 
         var findCallCount = 0
         coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
@@ -258,12 +265,19 @@ class TransferServiceTest {
             null
         }
 
-        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
-            firstArg<suspend () -> Transfer>().invoke()
+        var txCallCount = 0
+        coEvery { transactionExecutor.execute<Any>(any()) } coAnswers {
+            txCallCount++
+            firstArg<suspend () -> Any>().invoke()
         }
 
-        coEvery { transferRepository.save(any()) } returns pendingTransfer
+        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
+            firstArg<suspend () -> Any>().invoke()
+        }
+
+        coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(toAccount)
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when & then
         assertThrows<AccountNotFoundException> {
@@ -292,6 +306,7 @@ class TransferServiceTest {
             status = TransferStatus.PENDING,
             description = null
         )
+        val failedTransfer = pendingTransfer.fail("To account not found: 2")
 
         var findCallCount = 0
         coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } answers {
@@ -299,12 +314,19 @@ class TransferServiceTest {
             null
         }
 
-        coEvery { transactionExecutor.execute<Transfer>(any()) } coAnswers {
-            firstArg<suspend () -> Transfer>().invoke()
+        var txCallCount = 0
+        coEvery { transactionExecutor.execute<Any>(any()) } coAnswers {
+            txCallCount++
+            firstArg<suspend () -> Any>().invoke()
         }
 
-        coEvery { transferRepository.save(any()) } returns pendingTransfer
+        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
+            firstArg<suspend () -> Any>().invoke()
+        }
+
+        coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount)
+        coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when & then
         assertThrows<AccountNotFoundException> {
@@ -618,6 +640,11 @@ class TransferServiceTest {
             firstArg<suspend () -> Any>().invoke()
         }
 
+        // RetryPolicy: execute operation directly (success on first try)
+        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
+            firstArg<suspend () -> Any>().invoke()
+        }
+
         coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
         coEvery { transferAuditRepository.save(any()) } returns mockk()
@@ -640,6 +667,9 @@ class TransferServiceTest {
 
         // Verify audit event recorded
         coVerify(exactly = 1) { transferAuditRepository.save(any()) }
+
+        // Verify retry policy was used
+        coVerify(exactly = 1) { retryPolicy.execute<Any>(any()) }
     }
 
     @Test
@@ -682,6 +712,11 @@ class TransferServiceTest {
         var txCallCount = 0
         coEvery { transactionExecutor.execute<Any>(any()) } coAnswers {
             txCallCount++
+            firstArg<suspend () -> Any>().invoke()
+        }
+
+        // RetryPolicy: execute operation directly (success on first try)
+        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
             firstArg<suspend () -> Any>().invoke()
         }
 

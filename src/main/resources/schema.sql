@@ -1,4 +1,5 @@
 -- Drop tables if exists (for development)
+DROP TABLE IF EXISTS transfer_dead_letter_queue CASCADE;
 DROP TABLE IF EXISTS transfer_audit_events CASCADE;
 DROP TABLE IF EXISTS ledger_entries CASCADE;
 DROP TABLE IF EXISTS transfers CASCADE;
@@ -74,3 +75,21 @@ CREATE INDEX idx_audit_idempotency_key ON transfer_audit_events(idempotency_key)
 CREATE INDEX idx_audit_transfer_id ON transfer_audit_events(transfer_id);
 CREATE INDEX idx_audit_created_at ON transfer_audit_events(created_at DESC);
 CREATE INDEX idx_audit_event_type ON transfer_audit_events(event_type);
+
+-- Dead Letter Queue
+CREATE TABLE transfer_dead_letter_queue (
+    id BIGSERIAL PRIMARY KEY,
+    idempotency_key VARCHAR(255) NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    payload JSONB NOT NULL,
+    failure_reason TEXT,
+    retry_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_retry_at TIMESTAMP NULL,
+    processed BOOLEAN NOT NULL DEFAULT false,
+    processed_at TIMESTAMP NULL
+);
+
+CREATE INDEX idx_dlq_idempotency_key ON transfer_dead_letter_queue(idempotency_key);
+CREATE INDEX idx_dlq_unprocessed ON transfer_dead_letter_queue(processed, created_at DESC);
+CREATE INDEX idx_dlq_created_at ON transfer_dead_letter_queue(created_at DESC);

@@ -1,12 +1,22 @@
 package com.labs.ledger.infrastructure.config
 
 import com.labs.ledger.application.service.*
+import com.labs.ledger.application.support.ExponentialBackoffRetry
 import com.labs.ledger.domain.port.*
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 @Configuration
 class UseCaseConfig {
+
+    @Bean
+    fun retryPolicy(): RetryPolicy {
+        return ExponentialBackoffRetry(
+            maxAttempts = 3,
+            initialDelayMs = 100,
+            maxDelayMs = 1000
+        )
+    }
 
     @Bean
     fun createAccountUseCase(
@@ -45,14 +55,18 @@ class UseCaseConfig {
         ledgerEntryRepository: LedgerEntryRepository,
         transferRepository: TransferRepository,
         transactionExecutor: TransactionExecutor,
-        transferAuditRepository: TransferAuditRepository
+        transferAuditRepository: TransferAuditRepository,
+        retryPolicy: RetryPolicy,
+        deadLetterQueueRepository: DeadLetterQueueRepository
     ): TransferUseCase {
         return TransferService(
             accountRepository,
             ledgerEntryRepository,
             transferRepository,
             transactionExecutor,
-            transferAuditRepository
+            transferAuditRepository,
+            retryPolicy,
+            deadLetterQueueRepository
         )
     }
 
