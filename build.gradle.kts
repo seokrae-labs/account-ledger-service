@@ -41,7 +41,7 @@ dependencies {
 
     // Spring Data R2DBC
     implementation("org.springframework.boot:spring-boot-starter-data-r2dbc")
-    runtimeOnly("org.postgresql:r2dbc-postgresql")
+    implementation("org.postgresql:r2dbc-postgresql")
 
     // Flyway (requires JDBC for migrations)
     implementation("org.springframework.boot:spring-boot-starter-jdbc")  // Required for Flyway auto-configuration
