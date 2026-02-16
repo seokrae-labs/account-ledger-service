@@ -1,0 +1,11 @@
+openapi: 3.0.1
+info:
+  title: Account Ledger & Transfer Service API
+  description: 실시간 계좌 잔액 관리와 안전한 이체 처리를 제공하는 Reactive 원장 서비스
+  version: 1.0.0
+servers:
+- url: http://localhost:8080
+tags: []
+paths: {}
+components:
+  schemas: {}
