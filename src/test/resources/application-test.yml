@@ -2,6 +2,11 @@ spring:
   main:
     web-application-type: reactive  # Force reactive (WebFlux) mode
 
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
+
   r2dbc:
     # Testcontainers로 동적 주입 (AbstractIntegrationTest 참조)
     pool:

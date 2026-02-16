@@ -16,9 +16,10 @@ import io.mockk.coEvery
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration
 import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest
+import org.springframework.context.annotation.ComponentScan
+import org.springframework.context.annotation.FilterType
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.restdocs.headers.HeaderDocumentation.headerWithName
@@ -33,7 +34,10 @@ import java.math.BigDecimal
 
 @WebFluxTest(
     controllers = [TransferController::class],
-    excludeAutoConfiguration = [ReactiveSecurityAutoConfiguration::class]
+    excludeFilters = [ComponentScan.Filter(
+        type = FilterType.REGEX,
+        pattern = ["com\\.labs\\.ledger\\.infrastructure\\.security\\..*"]
+    )]
 )
 @AutoConfigureRestDocs
 @Import(GlobalExceptionHandler::class, RestDocsConfiguration::class, TestSecurityConfig::class)
