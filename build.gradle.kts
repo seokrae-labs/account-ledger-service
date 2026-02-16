@@ -63,6 +63,9 @@ dependencies {
     // Logging
     implementation("io.github.oshai:kotlin-logging-jvm:7.0.3")
 
+    // Caffeine Cache (for in-memory failure registry)
+    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         exclude(module = "mockito-core")
