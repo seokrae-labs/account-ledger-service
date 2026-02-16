@@ -44,13 +44,15 @@ class UseCaseConfig {
         accountRepository: AccountRepository,
         ledgerEntryRepository: LedgerEntryRepository,
         transferRepository: TransferRepository,
-        transactionExecutor: TransactionExecutor
+        transactionExecutor: TransactionExecutor,
+        transferAuditRepository: TransferAuditRepository
     ): TransferUseCase {
         return TransferService(
             accountRepository,
             ledgerEntryRepository,
             transferRepository,
-            transactionExecutor
+            transactionExecutor,
+            transferAuditRepository
         )
     }
 
