@@ -48,6 +48,11 @@ logging:
   pattern:
     console: "%d{HH:mm:ss.SSS} [%X{traceId:-}] %-5level %logger{36} - %msg%n"
 
+app:
+  security:
+    jwt-secret: "change-this-secret-key-in-production-minimum-256-bits-required-for-hs256"
+    jwt-expiration-ms: 86400000  # 24 hours
+
 springdoc:
   api-docs:
     path: /v3/api-docs

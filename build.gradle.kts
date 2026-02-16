@@ -28,6 +28,14 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
+    // Spring Security
+    implementation("org.springframework.boot:spring-boot-starter-security")
+
+    // JWT (JSON Web Token)
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
     // OpenAPI / Swagger UI (자동 생성, 어노테이션 불필요)
     implementation("org.springdoc:springdoc-openapi-starter-webflux-ui:2.8.15")
 
@@ -66,6 +74,9 @@ dependencies {
     // MockK
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("com.ninja-squad:springmockk:4.0.2")
+
+    // Spring Security Test
+    testImplementation("org.springframework.security:spring-security-test")
 
     // Spring REST Docs + OpenAPI 3.0 spec generation
     testImplementation("org.springframework.restdocs:spring-restdocs-webtestclient")

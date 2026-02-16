@@ -2,6 +2,7 @@ package com.labs.ledger.adapter.`in`.web
 
 import org.springframework.restdocs.webtestclient.WebTestClientRestDocumentation.document
 import com.labs.ledger.RestDocsConfiguration
+import com.labs.ledger.support.TestSecurityConfig
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidAmountException
@@ -20,6 +21,7 @@ import io.mockk.coEvery
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration
 import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest
 import org.springframework.context.annotation.Import
@@ -33,9 +35,12 @@ import org.springframework.restdocs.request.RequestDocumentation.pathParameters
 import org.springframework.test.web.reactive.server.WebTestClient
 import java.math.BigDecimal
 
-@WebFluxTest(AccountController::class)
+@WebFluxTest(
+    controllers = [AccountController::class],
+    excludeAutoConfiguration = [ReactiveSecurityAutoConfiguration::class]
+)
 @AutoConfigureRestDocs
-@Import(GlobalExceptionHandler::class, RestDocsConfiguration::class)
+@Import(GlobalExceptionHandler::class, RestDocsConfiguration::class, TestSecurityConfig::class)
 class AccountControllerTest {
 
     @Autowired
