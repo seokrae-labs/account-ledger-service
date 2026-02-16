@@ -10,6 +10,7 @@ import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.TransferUseCase
 import com.labs.ledger.support.AbstractIntegrationTest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -71,19 +72,27 @@ class TransferFailureDurabilityTest : AbstractIntegrationTest() {
             )
         }
 
+        // Wait for async persistence (최대 2초)
+        var savedTransfer: com.labs.ledger.adapter.out.persistence.entity.TransferEntity? = null
+        repeat(20) {
+            delay(100)
+            savedTransfer = transferEntityRepository.findByIdempotencyKey(idempotencyKey)
+            if (savedTransfer != null) return@repeat
+        }
+
         // then: DB에 FAILED 상태로 저장되어 있어야 함
-        val savedTransfer = transferEntityRepository.findByIdempotencyKey(idempotencyKey)
         assert(savedTransfer != null) {
             "Transfer with FAILED status should persist in DB"
         }
-        assert(savedTransfer!!.status == TransferStatus.FAILED.name) {
-            "Expected FAILED status, got ${savedTransfer.status}"
+        val transfer = savedTransfer!!
+        assert(transfer.status == TransferStatus.FAILED.name) {
+            "Expected FAILED status, got ${transfer.status}"
         }
-        assert(savedTransfer.failureReason != null) {
+        assert(transfer.failureReason != null) {
             "Failure reason should be recorded"
         }
-        assert(savedTransfer.failureReason!!.contains("Insufficient balance")) {
-            "Expected 'Insufficient balance' in reason, got: ${savedTransfer.failureReason}"
+        assert(transfer.failureReason!!.contains("Insufficient balance")) {
+            "Expected 'Insufficient balance' in reason, got: ${transfer.failureReason}"
         }
     }
 
@@ -119,18 +128,26 @@ class TransferFailureDurabilityTest : AbstractIntegrationTest() {
             )
         }
 
+        // Wait for async persistence (최대 2초)
+        var auditEvent: com.labs.ledger.adapter.out.persistence.entity.TransferAuditEventEntity? = null
+        repeat(20) {
+            delay(100)
+            auditEvent = transferAuditRepository.findByIdempotencyKey(idempotencyKey)
+            if (auditEvent != null) return@repeat
+        }
+
         // then: audit 이벤트 확인
-        val auditEvent = transferAuditRepository.findByIdempotencyKey(idempotencyKey)
         assert(auditEvent != null) {
             "Audit event should be persisted"
         }
-        assert(auditEvent!!.eventType == TransferAuditEventType.TRANSFER_FAILED_BUSINESS.name) {
-            "Expected TRANSFER_FAILED_BUSINESS, got ${auditEvent.eventType}"
+        val event = auditEvent!!
+        assert(event.eventType == TransferAuditEventType.TRANSFER_FAILED_BUSINESS.name) {
+            "Expected TRANSFER_FAILED_BUSINESS, got ${event.eventType}"
         }
-        assert(auditEvent.transferStatus == TransferStatus.FAILED.name) {
+        assert(event.transferStatus == TransferStatus.FAILED.name) {
             "Audit event should record FAILED status"
         }
-        assert(auditEvent.reasonCode != null) {
+        assert(event.reasonCode != null) {
             "Reason code should be recorded"
         }
     }
