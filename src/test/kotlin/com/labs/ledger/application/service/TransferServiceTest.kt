@@ -10,13 +10,14 @@ import com.labs.ledger.domain.model.LedgerEntryType
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
-import com.labs.ledger.domain.port.DeadLetterQueueRepository
+import com.labs.ledger.domain.port.FailureRegistry
 import com.labs.ledger.domain.port.LedgerEntryRepository
-import com.labs.ledger.domain.port.RetryPolicy
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
 import io.mockk.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -29,16 +30,16 @@ class TransferServiceTest {
     private val transferRepository: TransferRepository = mockk()
     private val transactionExecutor: TransactionExecutor = mockk()
     private val transferAuditRepository: TransferAuditRepository = mockk()
-    private val retryPolicy: RetryPolicy = mockk()
-    private val deadLetterQueueRepository: DeadLetterQueueRepository = mockk()
+    private val failureRegistry: FailureRegistry = mockk(relaxed = true)
+    private val asyncScope: CoroutineScope = CoroutineScope(SupervisorJob())
     private val service = TransferService(
         accountRepository,
         ledgerEntryRepository,
         transferRepository,
         transactionExecutor,
         transferAuditRepository,
-        retryPolicy,
-        deadLetterQueueRepository
+        failureRegistry,
+        asyncScope
     )
 
     @Test
@@ -271,9 +272,6 @@ class TransferServiceTest {
             firstArg<suspend () -> Any>().invoke()
         }
 
-        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
-            firstArg<suspend () -> Any>().invoke()
-        }
 
         coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(toAccount)
@@ -320,9 +318,6 @@ class TransferServiceTest {
             firstArg<suspend () -> Any>().invoke()
         }
 
-        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
-            firstArg<suspend () -> Any>().invoke()
-        }
 
         coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount)
@@ -641,9 +636,6 @@ class TransferServiceTest {
         }
 
         // RetryPolicy: execute operation directly (success on first try)
-        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
-            firstArg<suspend () -> Any>().invoke()
-        }
 
         coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(fromAccount, toAccount)
@@ -668,8 +660,8 @@ class TransferServiceTest {
         // Verify audit event recorded
         coVerify(exactly = 1) { transferAuditRepository.save(any()) }
 
-        // Verify retry policy was used
-        coVerify(exactly = 1) { retryPolicy.execute<Any>(any()) }
+        // Verify failure registered in memory
+        verify(exactly = 1) { failureRegistry.register(any(), any()) }
     }
 
     @Test
@@ -716,9 +708,6 @@ class TransferServiceTest {
         }
 
         // RetryPolicy: execute operation directly (success on first try)
-        coEvery { retryPolicy.execute<Any>(any()) } coAnswers {
-            firstArg<suspend () -> Any>().invoke()
-        }
 
         coEvery { transferRepository.save(any()) } returns pendingTransfer andThen failedTransfer
         coEvery { accountRepository.findByIdsForUpdate(listOf(1L, 2L)) } returns listOf(toAccount)

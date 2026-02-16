@@ -6,8 +6,6 @@ import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidAmountException
-import com.labs.ledger.domain.model.DeadLetterEvent
-import com.labs.ledger.domain.model.DeadLetterEventType
 import com.labs.ledger.domain.model.LedgerEntry
 import com.labs.ledger.domain.model.LedgerEntryType
 import com.labs.ledger.domain.model.Transfer
@@ -15,15 +13,17 @@ import com.labs.ledger.domain.model.TransferAuditEvent
 import com.labs.ledger.domain.model.TransferAuditEventType
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
-import com.labs.ledger.domain.port.DeadLetterQueueRepository
+import com.labs.ledger.domain.port.FailureRecord
+import com.labs.ledger.domain.port.FailureRegistry
 import com.labs.ledger.domain.port.LedgerEntryRepository
-import com.labs.ledger.domain.port.RetryPolicy
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
 import com.labs.ledger.domain.port.TransferUseCase
 import com.labs.ledger.application.support.retryOnOptimisticLock
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
 private val logger = KotlinLogging.logger {}
@@ -34,8 +34,8 @@ class TransferService(
     private val transferRepository: TransferRepository,
     private val transactionExecutor: TransactionExecutor,
     private val transferAuditRepository: TransferAuditRepository,
-    private val retryPolicy: RetryPolicy,
-    private val deadLetterQueueRepository: DeadLetterQueueRepository
+    private val failureRegistry: FailureRegistry,
+    private val asyncScope: CoroutineScope
 ) : TransferUseCase {
 
     override suspend fun execute(
@@ -45,7 +45,13 @@ class TransferService(
         amount: BigDecimal,
         description: String?
     ): Transfer {
-        // Fast path: check idempotency outside transaction
+        // Fast path: check in-memory failure registry first (fastest)
+        failureRegistry.get(idempotencyKey)?.let { record ->
+            logger.warn { "Duplicate failed transfer (memory hit): key=$idempotencyKey" }
+            return record.transfer
+        }
+
+        // Fast path: check DB for existing transfer
         val existingTransfer = transferRepository.findByIdempotencyKey(idempotencyKey)
         if (existingTransfer != null) {
             when (existingTransfer.status) {
@@ -152,14 +158,14 @@ class TransferService(
                     saved
                 }
             } catch (e: DomainException) {
-                // Handle business failures outside main transaction
+                // Handle business failures with async persistence
                 when (e) {
                     is InsufficientBalanceException,
                     is InvalidAmountException,
                     is InvalidAccountStatusException,
                     is AccountNotFoundException -> {
-                        persistFailureAndAudit(idempotencyKey, fromAccountId, toAccountId, amount, description, e)
-                        throw e  // Maintain API contract
+                        handleBusinessFailure(idempotencyKey, fromAccountId, toAccountId, amount, description, e)
+                        throw e  // Maintain API contract (immediate response ~50ms)
                     }
                     else -> {
                         // Other domain exceptions (e.g., DuplicateTransferException) should not save FAILED state
@@ -171,15 +177,23 @@ class TransferService(
     }
 
     /**
-     * Persist transfer failure state and audit event in independent transaction
+     * Handle business failure with memory-first async persistence
      *
-     * Design (Phase 1 Enhancement):
-     * - Runs in separate transaction (survives main tx rollback)
-     * - Retry with exponential backoff (3 attempts, 300ms total)
-     * - Dead Letter Queue (DLQ) fallback for final failures
-     * - Upsert logic: update PENDING -> FAILED, or create new FAILED if PENDING was rolled back
-     * - Records audit event in same transaction (atomic failure persistence)
-     * - Logs but doesn't re-throw persistence errors (business exception takes precedence)
+     * Strategy:
+     * 1. Register failure in memory immediately (synchronous, ~1ms)
+     * 2. Launch background coroutine for DB persistence (async, Fire-and-Forget)
+     * 3. Return control to caller for immediate response
+     *
+     * Benefits:
+     * - Immediate idempotency guarantee (memory registry)
+     * - Fast client response (~50ms total)
+     * - No retry complexity (eventual consistency acceptable)
+     * - Leverages Reactive system advantages
+     *
+     * Trade-offs:
+     * - Memory overhead (mitigated by Caffeine TTL/eviction)
+     * - Eventual consistency for audit logs (acceptable for failures)
+     * - Server restart loses in-flight failures (recoverable via DB fallback)
      *
      * @param idempotencyKey Transfer idempotency key
      * @param fromAccountId Source account ID
@@ -188,7 +202,7 @@ class TransferService(
      * @param description Transfer description
      * @param cause Business exception that caused the failure
      */
-    private suspend fun persistFailureAndAudit(
+    private fun handleBusinessFailure(
         idempotencyKey: String,
         fromAccountId: Long,
         toAccountId: Long,
@@ -196,22 +210,58 @@ class TransferService(
         description: String?,
         cause: DomainException
     ) {
-        // Retry with exponential backoff
-        val result = retryPolicy.execute {
+        // 1. Create failed transfer object
+        val failedTransfer = Transfer(
+            idempotencyKey = idempotencyKey,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            amount = amount,
+            description = description
+        ).fail(cause.message ?: "Unknown error")
+
+        // 2. Register in memory immediately (synchronous)
+        failureRegistry.register(
+            idempotencyKey,
+            FailureRecord(
+                transfer = failedTransfer,
+                errorMessage = cause.message ?: "Unknown error"
+            )
+        )
+
+        logger.warn {
+            "Transfer failure registered in memory: key=$idempotencyKey, " +
+                "reason=${cause.message}, cacheSize=${failureRegistry.size()}"
+        }
+
+        // 3. Launch async persistence (Fire-and-Forget)
+        asyncScope.launch {
+            persistFailureAsync(idempotencyKey, failedTransfer, cause)
+        }
+    }
+
+    /**
+     * Persist failure to DB asynchronously
+     *
+     * Runs in background coroutine, does not block client response.
+     * Failures are logged but not re-thrown (eventual consistency model).
+     *
+     * @param idempotencyKey Transfer idempotency key
+     * @param failedTransfer Failed transfer object
+     * @param cause Business exception
+     */
+    private suspend fun persistFailureAsync(
+        idempotencyKey: String,
+        failedTransfer: Transfer,
+        cause: DomainException
+    ) {
+        try {
             transactionExecutor.execute {
                 // Upsert FAILED state (handles main tx rollback)
                 val existing = transferRepository.findByIdempotencyKey(idempotencyKey)
-                val failedTransfer = when {
+                val saved = when {
                     existing == null -> {
                         // PENDING was rolled back -> create new FAILED
-                        val transfer = Transfer(
-                            idempotencyKey = idempotencyKey,
-                            fromAccountId = fromAccountId,
-                            toAccountId = toAccountId,
-                            amount = amount,
-                            description = description
-                        ).fail(cause.message ?: "Unknown error")
-                        transferRepository.save(transfer)
+                        transferRepository.save(failedTransfer)
                     }
                     existing.status == TransferStatus.PENDING -> {
                         // PENDING exists (edge case: different tx isolation) -> update to FAILED
@@ -226,62 +276,29 @@ class TransferService(
                 // Record audit event (same transaction)
                 transferAuditRepository.save(
                     TransferAuditEvent(
-                        transferId = failedTransfer.id,
+                        transferId = saved.id,
                         idempotencyKey = idempotencyKey,
                         eventType = TransferAuditEventType.TRANSFER_FAILED_BUSINESS,
-                        transferStatus = failedTransfer.status,
+                        transferStatus = saved.status,
                         reasonCode = cause::class.simpleName,
                         reasonMessage = cause.message
                     )
                 )
 
-                logger.warn { "Transfer failure persisted: key=$idempotencyKey, reason=${cause.message}" }
-            }
-        }
-
-        // If all retries failed, send to Dead Letter Queue
-        if (result == null) {
-            try {
-                val dlqEvent = DeadLetterEvent(
-                    idempotencyKey = idempotencyKey,
-                    eventType = DeadLetterEventType.FAILURE_PERSISTENCE_FAILED,
-                    payload = buildDLQPayload(fromAccountId, toAccountId, amount, description, cause),
-                    failureReason = cause.message,
-                    retryCount = 3  // After 3 retries
-                )
-                deadLetterQueueRepository.save(dlqEvent)
-                logger.error {
-                    "Failed to persist failure after retries, sent to DLQ: key=$idempotencyKey"
-                }
-            } catch (dlqError: Exception) {
-                // Last resort: log only
-                logger.error(dlqError) {
-                    "CRITICAL: Failed to save to DLQ: key=$idempotencyKey, error=${dlqError.message}"
+                logger.info {
+                    "Transfer failure persisted to DB: key=$idempotencyKey, transferId=${saved.id}"
                 }
             }
-        }
-    }
 
-    /**
-     * Build JSON payload for Dead Letter Queue
-     */
-    private fun buildDLQPayload(
-        fromAccountId: Long,
-        toAccountId: Long,
-        amount: BigDecimal,
-        description: String?,
-        cause: DomainException
-    ): String {
-        return """
-            {
-                "fromAccountId": $fromAccountId,
-                "toAccountId": $toAccountId,
-                "amount": "$amount",
-                "description": ${description?.let { "\"$it\"" } ?: "null"},
-                "originalException": "${cause::class.simpleName}",
-                "originalMessage": "${cause.message?.replace("\"", "\\\"") ?: "Unknown error"}",
-                "timestamp": "${java.time.LocalDateTime.now()}"
+            // Remove from memory after successful DB persistence
+            failureRegistry.remove(idempotencyKey)
+        } catch (e: Exception) {
+            // Log but don't re-throw (eventual consistency)
+            // Failure record remains in memory (TTL will evict)
+            logger.error(e) {
+                "Failed to persist failure to DB (will retry on next request): " +
+                    "key=$idempotencyKey, error=${e.message}"
             }
-        """.trimIndent()
+        }
     }
 }

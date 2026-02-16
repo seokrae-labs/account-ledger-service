@@ -1,21 +1,28 @@
 package com.labs.ledger.infrastructure.config
 
 import com.labs.ledger.application.service.*
-import com.labs.ledger.application.support.ExponentialBackoffRetry
+import com.labs.ledger.application.support.InMemoryFailureRegistry
 import com.labs.ledger.domain.port.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import java.time.Duration
 
 @Configuration
 class UseCaseConfig {
 
     @Bean
-    fun retryPolicy(): RetryPolicy {
-        return ExponentialBackoffRetry(
-            maxAttempts = 3,
-            initialDelayMs = 100,
-            maxDelayMs = 1000
+    fun failureRegistry(): FailureRegistry {
+        return InMemoryFailureRegistry(
+            ttl = Duration.ofHours(1),
+            maxSize = 10_000
         )
+    }
+
+    @Bean
+    fun asyncCoroutineScope(): CoroutineScope {
+        return CoroutineScope(SupervisorJob())
     }
 
     @Bean
@@ -56,8 +63,8 @@ class UseCaseConfig {
         transferRepository: TransferRepository,
         transactionExecutor: TransactionExecutor,
         transferAuditRepository: TransferAuditRepository,
-        retryPolicy: RetryPolicy,
-        deadLetterQueueRepository: DeadLetterQueueRepository
+        failureRegistry: FailureRegistry,
+        asyncCoroutineScope: CoroutineScope
     ): TransferUseCase {
         return TransferService(
             accountRepository,
@@ -65,8 +72,8 @@ class UseCaseConfig {
             transferRepository,
             transactionExecutor,
             transferAuditRepository,
-            retryPolicy,
-            deadLetterQueueRepository
+            failureRegistry,
+            asyncCoroutineScope
         )
     }
 
