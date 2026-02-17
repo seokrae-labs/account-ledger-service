@@ -5,6 +5,7 @@ import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.Transfer
+import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.DeadLetterRepository
@@ -80,7 +81,7 @@ class TransferServiceTest {
         coEvery { transferRepository.findByIdempotencyKey(idempotencyKey) } returns completedTransfer
 
         // when
-        val result = service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
+        val result = service.execute(TransferCommand(idempotencyKey, 1L, 2L, BigDecimal("100.00")))
 
         // then
         assert(result == completedTransfer)
@@ -110,7 +111,7 @@ class TransferServiceTest {
 
         // when & then
         assertThrows<DuplicateTransferException> {
-            service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
+            service.execute(TransferCommand(idempotencyKey, 1L, 2L, BigDecimal("100.00")))
         }
 
         // Fast path에서 예외 발생 → 트랜잭션 미진입
@@ -138,7 +139,7 @@ class TransferServiceTest {
         )
 
         // when
-        val result = service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
+        val result = service.execute(TransferCommand(idempotencyKey, 1L, 2L, BigDecimal("100.00")))
 
         // then
         assert(result == failedTransfer)
@@ -184,7 +185,7 @@ class TransferServiceTest {
         }
 
         // when
-        val result = service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
+        val result = service.execute(TransferCommand(idempotencyKey, 1L, 2L, BigDecimal("100.00")))
 
         // then
         assert(result == completedTransfer) { "Should return existing COMPLETED transfer" }
@@ -227,7 +228,7 @@ class TransferServiceTest {
 
         // when & then
         assertThrows<DuplicateTransferException> {
-            service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
+            service.execute(TransferCommand(idempotencyKey, 1L, 2L, BigDecimal("100.00")))
         }
 
         // Double-check가 PENDING 발견 → DuplicateTransferException
@@ -267,7 +268,7 @@ class TransferServiceTest {
         }
 
         // when
-        val result = service.execute(idempotencyKey, 1L, 2L, BigDecimal("100.00"), null)
+        val result = service.execute(TransferCommand(idempotencyKey, 1L, 2L, BigDecimal("100.00")))
 
         // then
         assert(result == failedTransfer) { "Should return existing FAILED transfer" }
@@ -342,7 +343,7 @@ class TransferServiceTest {
         coEvery { transferAuditRepository.save(any()) } returns mockk()
 
         // when
-        service.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
+        service.execute(TransferCommand(idempotencyKey, fromAccountId, toAccountId, amount))
 
         // then: ID가 정렬되어 조회되어야 함 (Deadlock 방지)
         coVerify(exactly = 1) {
