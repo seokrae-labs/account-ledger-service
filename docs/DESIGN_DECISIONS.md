@@ -26,17 +26,24 @@
 
 **Lost Update (갱신 손실)**: 두 트랜잭션이 동시에 같은 계좌에 입금할 때, 나중 트랜잭션이 먼저 트랜잭션의 잔액 변경을 덮어쓰는 문제.
 
-#### 문제 시나리오
-```
-초기 잔액: 1000원
+**❌ Optimistic Lock 없음 — Lost Update 발생**
 
-[TX1] 읽기: 1000원
-[TX2] 읽기: 1000원
-[TX1] 쓰기: 1000 + 500 = 1500원 ✓
-[TX2] 쓰기: 1000 + 300 = 1300원 ✓
+```mermaid
+sequenceDiagram
+    participant TX1
+    participant Account
+    participant TX2
 
-결과: 1300원 (올바른 값: 1800원)
-→ TX1의 +500원이 유실됨! 💸
+    Note over Account: 초기: balance=1000
+
+    TX1->>Account: READ balance=1000
+    TX2->>Account: READ balance=1000
+
+    TX1->>Account: WRITE 1000+500=1500 ✓
+    Note over Account: balance=1500
+
+    TX2->>Account: WRITE 1000+300=1300 ✓ (TX1 덮어씀!)
+    Note over Account: balance=1300 ❌<br/>(올바른 값: 1800원)<br/>TX1의 +500원 유실! 💸
 ```
 
 ### 해결 방법
@@ -51,22 +58,7 @@ data class Account(
 )
 ```
 
-#### 동작
-```
-초기: balance=1000, version=0
-
-[TX1] 읽기: balance=1000, version=0
-[TX2] 읽기: balance=1000, version=0
-[TX1] UPDATE ... SET balance=1500, version=1 WHERE id=1 AND version=0 ✓
-[TX2] UPDATE ... SET balance=1300, version=1 WHERE id=1 AND version=0 ✗
-      → version=1로 이미 변경됨 → OptimisticLockException (409)
-
-TX2는 최신 데이터로 재조회 후 재시도:
-[TX2'] 읽기: balance=1500, version=1
-[TX2'] UPDATE ... SET balance=1800, version=2 WHERE id=1 AND version=1 ✓
-```
-
-#### 시퀀스 다이어그램
+**✅ Optimistic Lock 적용 — 충돌 감지 후 재시도**
 
 ```mermaid
 sequenceDiagram
@@ -83,7 +75,7 @@ sequenceDiagram
     Note over Account: balance=1500, version=1
 
     TX2->>Account: UPDATE balance=1300, version=1<br/>WHERE version=0 ✗
-    Note over TX2: OptimisticLockException (409)<br/>version이 이미 변경됨
+    Note over TX2: OptimisticLockException (409)<br/>version이 이미 1로 변경됨
 
     TX2->>Account: RE-READ (balance=1500, version=1)
     TX2->>Account: UPDATE balance=1800, version=2<br/>WHERE version=1 ✓
