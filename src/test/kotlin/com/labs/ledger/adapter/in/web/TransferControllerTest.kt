@@ -111,6 +111,7 @@ class TransferControllerTest {
                         fieldWithPath("amount").description("이체 금액"),
                         fieldWithPath("status").description("이체 상태 (PENDING, COMPLETED, FAILED)"),
                         fieldWithPath("description").description("이체 설명"),
+                        fieldWithPath("failureReason").description("실패 사유 (실패 시에만 존재)").optional(),
                         fieldWithPath("createdAt").description("생성 시각"),
                         fieldWithPath("updatedAt").description("수정 시각")
                     )
@@ -160,6 +161,30 @@ class TransferControllerTest {
             .jsonPath("$.id").isEqualTo(2)
             .jsonPath("$.status").isEqualTo("COMPLETED")
             .jsonPath("$.amount").isEqualTo(150.00)
+    }
+
+    @Test
+    fun `Idempotency-Key 256자 초과 - 400 Bad Request`() = runTest {
+        // given - 256자 키
+        val tooLongKey = "a".repeat(256)
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", tooLongKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 2,
+                    "amount": 100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_REQUEST")
+            .jsonPath("$.message").exists()
     }
 
     @Test

@@ -24,6 +24,7 @@ data class TransferResponse(
     val amount: BigDecimal,
     val status: String,
     val description: String?,
+    val failureReason: String?,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime
 ) {
@@ -37,6 +38,7 @@ data class TransferResponse(
                 amount = transfer.amount,
                 status = transfer.status.name,
                 description = transfer.description,
+                failureReason = transfer.failureReason,
                 createdAt = transfer.createdAt,
                 updatedAt = transfer.updatedAt
             )

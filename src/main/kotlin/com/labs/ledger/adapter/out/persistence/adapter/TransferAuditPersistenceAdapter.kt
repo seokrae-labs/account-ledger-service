@@ -6,6 +6,7 @@ import com.labs.ledger.domain.model.TransferAuditEvent
 import com.labs.ledger.domain.model.TransferAuditEventType
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.TransferAuditRepository
+import io.r2dbc.postgresql.codec.Json
 import org.springframework.stereotype.Component
 
 @Component
@@ -28,7 +29,7 @@ class TransferAuditPersistenceAdapter(
             transferStatus = domain.transferStatus?.name,
             reasonCode = domain.reasonCode,
             reasonMessage = domain.reasonMessage,
-            metadata = domain.metadata,
+            metadata = domain.metadata?.let { Json.of(it) },
             createdAt = domain.createdAt
         )
     }
@@ -42,7 +43,7 @@ class TransferAuditPersistenceAdapter(
             transferStatus = entity.transferStatus?.let { TransferStatus.valueOf(it) },
             reasonCode = entity.reasonCode,
             reasonMessage = entity.reasonMessage,
-            metadata = entity.metadata,
+            metadata = entity.metadata?.asString(),
             createdAt = entity.createdAt
         )
     }

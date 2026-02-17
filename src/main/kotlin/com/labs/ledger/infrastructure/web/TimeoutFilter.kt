@@ -1,13 +1,16 @@
 package com.labs.ledger.infrastructure.web
 
 import org.springframework.core.annotation.Order
+import org.springframework.core.io.buffer.DefaultDataBufferFactory
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.server.ServerWebExchange
 import org.springframework.web.server.WebFilter
 import org.springframework.web.server.WebFilterChain
 import reactor.core.publisher.Mono
 import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.TimeoutException
 
 /**
@@ -27,9 +30,13 @@ class TimeoutFilter : WebFilter {
     override fun filter(exchange: ServerWebExchange, chain: WebFilterChain): Mono<Void> {
         return chain.filter(exchange)
             .timeout(REQUEST_TIMEOUT)
-            .onErrorResume(TimeoutException::class.java) { error ->
-                exchange.response.statusCode = HttpStatus.GATEWAY_TIMEOUT
-                exchange.response.setComplete()
+            .onErrorResume(TimeoutException::class.java) {
+                val response = exchange.response
+                response.statusCode = HttpStatus.GATEWAY_TIMEOUT
+                response.headers.contentType = MediaType.APPLICATION_JSON
+                val body = """{"error":"GATEWAY_TIMEOUT","message":"Request timed out","timestamp":"${Instant.now()}"}"""
+                val buffer = DefaultDataBufferFactory().wrap(body.toByteArray())
+                response.writeWith(Mono.just(buffer))
             }
     }
 }

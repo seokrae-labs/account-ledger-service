@@ -18,6 +18,8 @@ data class Transfer(
 ) {
     init {
         require(idempotencyKey.isNotBlank()) { "Idempotency key must not be blank" }
+        require(fromAccountId > 0) { "From account ID must be positive" }
+        require(toAccountId > 0) { "To account ID must be positive" }
         require(fromAccountId != toAccountId) { "Cannot transfer to the same account" }
         require(amount > BigDecimal.ZERO) { "Amount must be positive" }
     }
