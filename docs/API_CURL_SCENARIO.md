@@ -83,7 +83,7 @@ curl -s "$BASE_URL/api/accounts/$TO_ACCOUNT_ID/ledger-entries?page=0&size=20" \
 
 ## 참고
 
-- Swagger 시나리오: `README.md`
+- Swagger 시나리오: [API_SWAGGER_SCENARIO.md](API_SWAGGER_SCENARIO.md)
 - 상세 API 명세: `docs/API_REFERENCE.md`
 - 인증 가이드: `docs/AUTHENTICATION_GUIDE.md`
 
