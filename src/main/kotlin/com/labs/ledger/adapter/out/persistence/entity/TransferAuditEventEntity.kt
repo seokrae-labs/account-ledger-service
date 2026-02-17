@@ -1,5 +1,6 @@
 package com.labs.ledger.adapter.out.persistence.entity
 
+import io.r2dbc.postgresql.codec.Json
 import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Table
 import java.time.LocalDateTime
@@ -14,6 +15,6 @@ data class TransferAuditEventEntity(
     val transferStatus: String? = null,
     val reasonCode: String? = null,
     val reasonMessage: String? = null,
-    val metadata: String? = null,
+    val metadata: Json? = null,
     val createdAt: LocalDateTime = LocalDateTime.now()
 )

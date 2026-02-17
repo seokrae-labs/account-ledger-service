@@ -30,6 +30,52 @@ class TransferTest {
     }
 
     @Test
+    fun `should throw exception when fromAccountId is zero or negative`() {
+        assertThatThrownBy {
+            Transfer(
+                idempotencyKey = UUID.randomUUID().toString(),
+                fromAccountId = 0L,
+                toAccountId = 2L,
+                amount = BigDecimal("100.00")
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("From account ID must be positive")
+
+        assertThatThrownBy {
+            Transfer(
+                idempotencyKey = UUID.randomUUID().toString(),
+                fromAccountId = -1L,
+                toAccountId = 2L,
+                amount = BigDecimal("100.00")
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("From account ID must be positive")
+    }
+
+    @Test
+    fun `should throw exception when toAccountId is zero or negative`() {
+        assertThatThrownBy {
+            Transfer(
+                idempotencyKey = UUID.randomUUID().toString(),
+                fromAccountId = 1L,
+                toAccountId = 0L,
+                amount = BigDecimal("100.00")
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("To account ID must be positive")
+
+        assertThatThrownBy {
+            Transfer(
+                idempotencyKey = UUID.randomUUID().toString(),
+                fromAccountId = 1L,
+                toAccountId = -1L,
+                amount = BigDecimal("100.00")
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("To account ID must be positive")
+    }
+
+    @Test
     fun `should throw exception when idempotency key is blank`() {
         assertThatThrownBy {
             Transfer(

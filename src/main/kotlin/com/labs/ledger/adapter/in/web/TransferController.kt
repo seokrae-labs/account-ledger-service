@@ -33,6 +33,10 @@ class TransferController(
         val idempotencyKey = exchange.request.headers.getFirst("Idempotency-Key")
             ?: throw IllegalArgumentException("Idempotency-Key header is required")
 
+        if (idempotencyKey.length > 255) {
+            throw IllegalArgumentException("Idempotency-Key must not exceed 255 characters")
+        }
+
         val transfer = transferUseCase.execute(
             idempotencyKey = idempotencyKey,
             fromAccountId = request.fromAccountId!!,
