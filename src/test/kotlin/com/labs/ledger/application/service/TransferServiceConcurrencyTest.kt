@@ -1,6 +1,7 @@
 package com.labs.ledger.application.service
 
 import com.labs.ledger.domain.exception.DuplicateTransferException
+import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.support.AbstractIntegrationTest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -54,13 +55,12 @@ class TransferServiceConcurrencyTest : AbstractIntegrationTest() {
             listOf(
                 async(Dispatchers.Default) {
                     try {
-                        transferService.execute(
+                        transferService.execute(TransferCommand(
                             idempotencyKey = "transfer-a-to-b-$i",
                             fromAccountId = account1Id,
                             toAccountId = account2Id,
-                            amount = transferAmount,
-                            description = null
-                        )
+                            amount = transferAmount
+                        ))
                         true
                     } catch (e: Exception) {
                         false
@@ -68,13 +68,12 @@ class TransferServiceConcurrencyTest : AbstractIntegrationTest() {
                 },
                 async(Dispatchers.Default) {
                     try {
-                        transferService.execute(
+                        transferService.execute(TransferCommand(
                             idempotencyKey = "transfer-b-to-a-$i",
                             fromAccountId = account2Id,
                             toAccountId = account1Id,
-                            amount = transferAmount,
-                            description = null
-                        )
+                            amount = transferAmount
+                        ))
                         true
                     } catch (e: Exception) {
                         false
@@ -99,22 +98,20 @@ class TransferServiceConcurrencyTest : AbstractIntegrationTest() {
         val idempotencyKey = UUID.randomUUID().toString()
 
         // when - 첫 번째 이체
-        val first = transferService.execute(
+        val first = transferService.execute(TransferCommand(
             idempotencyKey = idempotencyKey,
             fromAccountId = account1Id,
             toAccountId = account2Id,
-            amount = BigDecimal("100.00"),
-            description = null
-        )
+            amount = BigDecimal("100.00")
+        ))
 
         // when - 동일한 key로 두 번째 요청 (순차적)
-        val second = transferService.execute(
+        val second = transferService.execute(TransferCommand(
             idempotencyKey = idempotencyKey,
             fromAccountId = account1Id,
             toAccountId = account2Id,
-            amount = BigDecimal("100.00"),
-            description = null
-        )
+            amount = BigDecimal("100.00")
+        ))
 
         // then - 두 요청이 동일한 Transfer를 반환 (Idempotency 보장)
         assert(first.id == second.id) {
@@ -139,13 +136,12 @@ class TransferServiceConcurrencyTest : AbstractIntegrationTest() {
 
         // when - 순차적으로 이체 (R2DBC pool 제약 고려)
         repeat(transferCount) { i ->
-            transferService.execute(
+            transferService.execute(TransferCommand(
                 idempotencyKey = "sequential-transfer-$i",
                 fromAccountId = account1Id,
                 toAccountId = account2Id,
-                amount = transferAmount,
-                description = null
-            )
+                amount = transferAmount
+            ))
         }
 
         // then

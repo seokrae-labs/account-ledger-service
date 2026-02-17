@@ -24,6 +24,7 @@ import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
 import com.labs.ledger.domain.port.TransferUseCase
+import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.application.support.retryOnOptimisticLock
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
@@ -44,13 +45,8 @@ class TransferService(
     private val asyncScope: CoroutineScope
 ) : TransferUseCase {
 
-    override suspend fun execute(
-        idempotencyKey: String,
-        fromAccountId: Long,
-        toAccountId: Long,
-        amount: BigDecimal,
-        description: String?
-    ): Transfer {
+    override suspend fun execute(command: TransferCommand): Transfer {
+        val (idempotencyKey, fromAccountId, toAccountId, amount, description) = command
         // Fast path: check in-memory failure registry first (fastest)
         failureRegistry.get(idempotencyKey)?.let { record ->
             logger.warn { "Duplicate failed transfer (memory hit): key=$idempotencyKey" }

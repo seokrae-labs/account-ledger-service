@@ -9,6 +9,7 @@ import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.exception.InvalidTransferStatusTransitionException
 import com.labs.ledger.domain.model.Transfer
+import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.TransferUseCase
 import com.ninjasquad.springmockk.MockkBean
@@ -71,7 +72,7 @@ class TransferControllerTest {
         )
 
         coEvery {
-            transferUseCase.execute(idempotencyKey, fromAccountId, toAccountId, amount, null)
+            transferUseCase.execute(TransferCommand(idempotencyKey, fromAccountId, toAccountId, amount))
         } returns transfer
 
         // when & then
@@ -139,7 +140,7 @@ class TransferControllerTest {
         )
 
         coEvery {
-            transferUseCase.execute(idempotencyKey, fromAccountId, toAccountId, amount, description)
+            transferUseCase.execute(TransferCommand(idempotencyKey, fromAccountId, toAccountId, amount, description))
         } returns transfer
 
         // when & then
@@ -212,7 +213,7 @@ class TransferControllerTest {
         // given
         val idempotencyKey = "duplicate-key"
         coEvery {
-            transferUseCase.execute(any(), any(), any(), any(), any())
+            transferUseCase.execute(any<TransferCommand>())
         } throws DuplicateTransferException("Transfer already exists")
 
         // when & then
@@ -241,7 +242,7 @@ class TransferControllerTest {
         val optimisticLockException = com.labs.ledger.domain.exception.OptimisticLockException("Version mismatch")
 
         coEvery {
-            transferUseCase.execute(any(), any(), any(), any(), any())
+            transferUseCase.execute(any<TransferCommand>())
         } throws optimisticLockException
 
         // when & then
@@ -268,7 +269,7 @@ class TransferControllerTest {
         // given
         val idempotencyKey = "no-account-key"
         coEvery {
-            transferUseCase.execute(any(), any(), any(), any(), any())
+            transferUseCase.execute(any<TransferCommand>())
         } throws AccountNotFoundException("Account not found")
 
         // when & then
@@ -295,7 +296,7 @@ class TransferControllerTest {
         // given
         val idempotencyKey = "error-key"
         coEvery {
-            transferUseCase.execute(any(), any(), any(), any(), any())
+            transferUseCase.execute(any<TransferCommand>())
         } throws RuntimeException("Database connection failed")
 
         // when & then
@@ -386,7 +387,7 @@ class TransferControllerTest {
         // given
         val idempotencyKey = "invalid-status-key"
         coEvery {
-            transferUseCase.execute(any(), any(), any(), any(), any())
+            transferUseCase.execute(any<TransferCommand>())
         } throws InvalidTransferStatusTransitionException("Cannot transition from COMPLETED to PENDING")
 
         // when & then
@@ -413,7 +414,7 @@ class TransferControllerTest {
         // given
         val idempotencyKey = "insufficient-balance-key"
         coEvery {
-            transferUseCase.execute(any(), any(), any(), any(), any())
+            transferUseCase.execute(any<TransferCommand>())
         } throws InsufficientBalanceException("Insufficient balance. Required: 1000.00, Available: 500.00")
 
         // when & then

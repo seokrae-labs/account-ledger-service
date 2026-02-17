@@ -1,6 +1,7 @@
 package com.labs.ledger.adapter.`in`.web
 
 import com.labs.ledger.adapter.`in`.web.dto.*
+import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.domain.port.GetTransfersUseCase
 import com.labs.ledger.domain.port.TransferUseCase
 import jakarta.validation.Valid
@@ -37,13 +38,14 @@ class TransferController(
             throw IllegalArgumentException("Idempotency-Key must not exceed 255 characters")
         }
 
-        val transfer = transferUseCase.execute(
+        val command = TransferCommand(
             idempotencyKey = idempotencyKey,
             fromAccountId = request.fromAccountId!!,
             toAccountId = request.toAccountId!!,
             amount = request.amount,
             description = request.description
         )
+        val transfer = transferUseCase.execute(command)
 
         return TransferResponse.from(transfer)
     }
