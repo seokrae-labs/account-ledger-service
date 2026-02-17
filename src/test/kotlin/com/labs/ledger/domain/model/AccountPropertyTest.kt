@@ -35,7 +35,7 @@ class AccountPropertyTest {
             val deposited = account.deposit(depositAmount)
 
             // then
-            deposited.balance shouldBe (initialBalance + depositAmount)
+            deposited.balance.compareTo(initialBalance + depositAmount) shouldBe 0
         }
     }
 
