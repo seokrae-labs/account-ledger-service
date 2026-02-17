@@ -66,6 +66,30 @@ TX2는 최신 데이터로 재조회 후 재시도:
 [TX2'] UPDATE ... SET balance=1800, version=2 WHERE id=1 AND version=1 ✓
 ```
 
+#### 시퀀스 다이어그램
+
+```mermaid
+sequenceDiagram
+    participant TX1
+    participant Account
+    participant TX2
+
+    Note over Account: 초기: balance=1000, version=0
+
+    TX1->>Account: READ (balance=1000, version=0)
+    TX2->>Account: READ (balance=1000, version=0)
+
+    TX1->>Account: UPDATE balance=1500, version=1<br/>WHERE version=0 ✓
+    Note over Account: balance=1500, version=1
+
+    TX2->>Account: UPDATE balance=1300, version=1<br/>WHERE version=0 ✗
+    Note over TX2: OptimisticLockException (409)<br/>version이 이미 변경됨
+
+    TX2->>Account: RE-READ (balance=1500, version=1)
+    TX2->>Account: UPDATE balance=1800, version=2<br/>WHERE version=1 ✓
+    Note over Account: balance=1800, version=2 ✓
+```
+
 ### 없으면?
 
 - ❌ **잔액 데이터 오류** (Silent Corruption): 사용자에게 알리지 않고 잔액이 틀어짐
@@ -126,6 +150,49 @@ fun execute(fromId: Long, toId: Long, amount: BigDecimal) {
 
 → TX2는 TX1이 1번 계좌 잠금을 해제할 때까지 대기
 → TX1 완료 후 TX2 순차 실행 (Deadlock 없음)
+```
+
+#### 비교 다이어그램
+
+**❌ 정렬 없음 - Deadlock 발생**
+
+```mermaid
+sequenceDiagram
+    participant TX1 as TX1<br/>(A→B 이체)
+    participant AccA as Account A
+    participant AccB as Account B
+    participant TX2 as TX2<br/>(B→A 이체)
+
+    Note over TX1,TX2: ❌ 정렬 없음 (순서 다름)
+
+    TX1->>AccA: LOCK A ✓
+    TX2->>AccB: LOCK B ✓
+    TX1->>AccB: LOCK B... (대기 중)
+    TX2->>AccA: LOCK A... (대기 중)
+
+    Note over TX1,TX2: 💀 Deadlock!<br/>PostgreSQL이 감지 후 TX 중단
+```
+
+**✅ ID 정렬 - Deadlock 방지**
+
+```mermaid
+sequenceDiagram
+    participant TX1 as TX1<br/>(A→B 이체)
+    participant Acc1 as Account 1
+    participant Acc2 as Account 2
+    participant TX2 as TX2<br/>(B→A 이체)
+
+    Note over TX1,TX2: ✅ ID 정렬 (1→2 순서 통일)
+
+    TX1->>Acc1: LOCK 1 ✓
+    TX1->>Acc2: LOCK 2 ✓
+    Note over TX1: 이체 처리 완료
+
+    TX2->>Acc1: LOCK 1... (TX1 완료 대기)
+    TX1-->>Acc1: UNLOCK 1, 2
+    TX2->>Acc1: LOCK 1 ✓
+    TX2->>Acc2: LOCK 2 ✓
+    Note over TX2: 이체 처리 완료
 ```
 
 ### 없으면?
@@ -198,6 +265,40 @@ transactionExecutor.execute {
 [TX2] 트랜잭션 시작 → 이체 처리 ✓
 → 이중 출금 발생! 💸
 ```
+
+#### 3-Tier 플로우차트
+
+```mermaid
+flowchart TD
+    A[이체 요청<br/>Idempotency-Key: abc-123] --> B{Tier 1: Memory<br/>FailureRegistry}
+    B -->|HIT<br/>~1ms| Z[이전 결과 반환]
+    B -->|MISS| C{Tier 2: DB Fast Path<br/>트랜잭션 밖}
+    C -->|HIT<br/>~10ms| Z
+    C -->|MISS| D[트랜잭션 시작]
+
+    D --> E{Tier 3: Double-Check<br/>트랜잭션 안}
+    E -->|중복 발견| F[DuplicateException]
+    E -->|신규 요청| G[이체 처리]
+
+    G --> H[COMPLETED 저장]
+    H --> Z
+
+    F --> Z
+
+    style B fill:#e1f5ff,stroke:#0066cc,stroke-width:2px
+    style C fill:#e1f5ff,stroke:#0066cc,stroke-width:2px
+    style E fill:#fff3cd,stroke:#ff9900,stroke-width:3px
+    style G fill:#d4edda,stroke:#28a745,stroke-width:2px
+    style Z fill:#f8f9fa,stroke:#6c757d,stroke-width:2px
+
+    classDef critical fill:#fff3cd,stroke:#ff9900,stroke-width:3px
+    class E critical
+```
+
+**범례**:
+- 🔵 **파란색 (Tier 1-2)**: 성능 최적화 레이어 - 없어도 기능적으로 정상
+- 🟡 **노란색 (Tier 3)**: 필수 레이어 - 없으면 이중 출금 발생
+- 🟢 **초록색**: 비즈니스 로직 실행
 
 ### 없으면?
 
@@ -313,6 +414,70 @@ try {
 **성능 개선**:
 - 동기: 50 + 20 = **70ms**
 - 비동기: 50 + 1 = **51ms** (30% 개선)
+
+#### 비교 시퀀스 다이어그램
+
+**❌ 동기 방식 - 70ms 지연**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Service
+    participant DB
+
+    Note over Client,DB: ❌ 동기 영속화: 총 70ms
+
+    Client->>Service: 이체 요청
+    activate Service
+    Note over Service: 비즈니스 로직<br/>(50ms)
+    Note over Service: InsufficientBalance 발생
+    Service->>DB: FAILED 상태 저장 (20ms)
+    activate DB
+    DB-->>Service: 저장 완료
+    deactivate DB
+    Service->>Client: 400 Bad Request
+    deactivate Service
+
+    Note over Client: 총 응답 시간: 70ms
+```
+
+**✅ 비동기 방식 - 51ms 지연 (30% 개선)**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Service
+    participant Memory as FailureRegistry
+    participant Async as Async Worker
+    participant DB
+
+    Note over Client,DB: ✅ Memory-First: 총 51ms
+
+    Client->>Service: 이체 요청
+    activate Service
+    Note over Service: 비즈니스 로직<br/>(50ms)
+    Note over Service: InsufficientBalance 발생
+
+    Service->>Memory: 등록 (1ms)
+    activate Memory
+    Memory-->>Service: 등록 완료
+    deactivate Memory
+
+    Service-->>Async: 비동기 영속화 시작<br/>(Fire-and-Forget)
+    activate Async
+
+    Service->>Client: 400 Bad Request (즉시)
+    deactivate Service
+
+    Note over Client: 총 응답 시간: 51ms ✓
+
+    Note over Async: 백그라운드 실행
+    Async->>DB: FAILED + 감사 이벤트 저장
+    activate DB
+    DB-->>Async: 저장 완료
+    deactivate DB
+    deactivate Async
+```
 
 ### 없으면?
 
