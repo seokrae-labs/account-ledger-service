@@ -6,6 +6,7 @@ import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.TransferAuditEventType
+import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.FailureRegistry
@@ -74,13 +75,13 @@ class TransferMemoryCacheIntegrationTest : AbstractIntegrationTest() {
 
         // when: 이체 실패
         assertThrows<InsufficientBalanceException> {
-            transferUseCase.execute(
+            transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
                 amount = BigDecimal("500.00"),
                 description = "Test"
-            )
+            ))
         }
 
         // then: 메모리 캐시에 즉시 등록됨
@@ -118,13 +119,12 @@ class TransferMemoryCacheIntegrationTest : AbstractIntegrationTest() {
 
         // when: 실패
         assertThrows<InsufficientBalanceException> {
-            transferUseCase.execute(
+            transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
-                amount = BigDecimal("300.00"),
-                description = null
-            )
+                amount = BigDecimal("300.00")
+            ))
         }
 
         // then: 메모리에 즉시 등록
@@ -180,24 +180,22 @@ class TransferMemoryCacheIntegrationTest : AbstractIntegrationTest() {
 
         // First attempt - fails
         assertThrows<InsufficientBalanceException> {
-            transferUseCase.execute(
+            transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
-                amount = BigDecimal("100.00"),
-                description = null
-            )
+                amount = BigDecimal("100.00")
+            ))
         }
 
         // when: 즉시 재요청 (DB 저장 전)
         val duration = measureTimeMillis {
-            val result = transferUseCase.execute(
+            val result = transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
-                amount = BigDecimal("100.00"),
-                description = null
-            )
+                amount = BigDecimal("100.00")
+            ))
 
             // then: 메모리에서 즉시 반환
             assert(result.status == TransferStatus.FAILED) {
@@ -235,13 +233,12 @@ class TransferMemoryCacheIntegrationTest : AbstractIntegrationTest() {
         // when: 실패 시간 측정
         val duration = measureTimeMillis {
             assertThrows<InsufficientBalanceException> {
-                transferUseCase.execute(
+                transferUseCase.execute(TransferCommand(
                     idempotencyKey = idempotencyKey,
                     fromAccountId = fromAccount.id!!,
                     toAccountId = toAccount.id!!,
-                    amount = BigDecimal("1000.00"),
-                    description = null
-                )
+                    amount = BigDecimal("1000.00")
+                ))
             }
         }
 
@@ -279,13 +276,12 @@ class TransferMemoryCacheIntegrationTest : AbstractIntegrationTest() {
 
         // when: 실패
         assertThrows<InsufficientBalanceException> {
-            transferUseCase.execute(
+            transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
-                amount = BigDecimal("200.00"),
-                description = null
-            )
+                amount = BigDecimal("200.00")
+            ))
         }
 
         // then: 처음에는 메모리에 있음
@@ -329,13 +325,13 @@ class TransferMemoryCacheIntegrationTest : AbstractIntegrationTest() {
 
         // when: 성공
         val duration = measureTimeMillis {
-            val result = transferUseCase.execute(
+            val result = transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
                 amount = BigDecimal("100.00"),
                 description = "Success test"
-            )
+            ))
 
             // then: 성공
             assert(result.status == TransferStatus.COMPLETED) {

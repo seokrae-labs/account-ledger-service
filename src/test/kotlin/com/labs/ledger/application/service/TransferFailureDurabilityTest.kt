@@ -6,6 +6,7 @@ import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.TransferAuditEventType
+import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
 import com.labs.ledger.domain.port.TransferUseCase
@@ -63,13 +64,13 @@ class TransferFailureDurabilityTest : AbstractIntegrationTest() {
 
         // when: 이체 시도 (실패 예상)
         assertThrows<InsufficientBalanceException> {
-            transferUseCase.execute(
+            transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
                 amount = excessiveAmount,
                 description = "Test excessive transfer"
-            )
+            ))
         }
 
         // Wait for async persistence (최대 2초)
@@ -119,13 +120,12 @@ class TransferFailureDurabilityTest : AbstractIntegrationTest() {
 
         // when: 실패하는 이체 시도
         assertThrows<InsufficientBalanceException> {
-            transferUseCase.execute(
+            transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
-                amount = excessiveAmount,
-                description = null
-            )
+                amount = excessiveAmount
+            ))
         }
 
         // Wait for async persistence (최대 2초)
@@ -175,23 +175,21 @@ class TransferFailureDurabilityTest : AbstractIntegrationTest() {
 
         // First attempt - fails
         assertThrows<InsufficientBalanceException> {
-            transferUseCase.execute(
+            transferUseCase.execute(TransferCommand(
                 idempotencyKey = idempotencyKey,
                 fromAccountId = fromAccount.id!!,
                 toAccountId = toAccount.id!!,
-                amount = excessiveAmount,
-                description = null
-            )
+                amount = excessiveAmount
+            ))
         }
 
         // when: 동일한 idempotency key로 재요청
-        val result = transferUseCase.execute(
+        val result = transferUseCase.execute(TransferCommand(
             idempotencyKey = idempotencyKey,
             fromAccountId = fromAccount.id!!,
             toAccountId = toAccount.id!!,
-            amount = excessiveAmount,
-            description = null
-        )
+            amount = excessiveAmount
+        ))
 
         // then: 기존 FAILED 상태 반환 (예외 발생 X)
         assert(result.status == TransferStatus.FAILED) {
@@ -224,13 +222,13 @@ class TransferFailureDurabilityTest : AbstractIntegrationTest() {
         val amount = BigDecimal("300.00")
 
         // when: 정상 이체
-        val result = transferUseCase.execute(
+        val result = transferUseCase.execute(TransferCommand(
             idempotencyKey = idempotencyKey,
             fromAccountId = fromAccount.id!!,
             toAccountId = toAccount.id!!,
             amount = amount,
             description = "Success test"
-        )
+        ))
 
         // then: 성공 상태 확인
         assert(result.status == TransferStatus.COMPLETED) {
