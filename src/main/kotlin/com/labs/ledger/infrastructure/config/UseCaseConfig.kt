@@ -1,5 +1,6 @@
 package com.labs.ledger.infrastructure.config
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.labs.ledger.application.service.*
 import com.labs.ledger.application.support.InMemoryFailureRegistry
 import com.labs.ledger.domain.port.*
@@ -64,6 +65,8 @@ class UseCaseConfig {
         transactionExecutor: TransactionExecutor,
         transferAuditRepository: TransferAuditRepository,
         failureRegistry: FailureRegistry,
+        deadLetterRepository: DeadLetterRepository,
+        objectMapper: ObjectMapper,
         asyncCoroutineScope: CoroutineScope
     ): TransferUseCase {
         return TransferService(
@@ -73,6 +76,8 @@ class UseCaseConfig {
             transactionExecutor,
             transferAuditRepository,
             failureRegistry,
+            deadLetterRepository,
+            objectMapper,
             asyncCoroutineScope
         )
     }

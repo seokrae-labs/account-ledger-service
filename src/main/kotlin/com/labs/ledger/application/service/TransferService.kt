@@ -1,11 +1,14 @@
 package com.labs.ledger.application.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DomainException
 import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.exception.InsufficientBalanceException
 import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidAmountException
+import com.labs.ledger.domain.model.DeadLetterEntry
+import com.labs.ledger.domain.model.DeadLetterEventType
 import com.labs.ledger.domain.model.LedgerEntry
 import com.labs.ledger.domain.model.LedgerEntryType
 import com.labs.ledger.domain.model.Transfer
@@ -13,6 +16,7 @@ import com.labs.ledger.domain.model.TransferAuditEvent
 import com.labs.ledger.domain.model.TransferAuditEventType
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
+import com.labs.ledger.domain.port.DeadLetterRepository
 import com.labs.ledger.domain.port.FailureRecord
 import com.labs.ledger.domain.port.FailureRegistry
 import com.labs.ledger.domain.port.LedgerEntryRepository
@@ -35,6 +39,8 @@ class TransferService(
     private val transactionExecutor: TransactionExecutor,
     private val transferAuditRepository: TransferAuditRepository,
     private val failureRegistry: FailureRegistry,
+    private val deadLetterRepository: DeadLetterRepository,
+    private val objectMapper: ObjectMapper,
     private val asyncScope: CoroutineScope
 ) : TransferUseCase {
 
@@ -293,11 +299,33 @@ class TransferService(
             // Remove from memory after successful DB persistence
             failureRegistry.remove(idempotencyKey)
         } catch (e: Exception) {
-            // Log but don't re-throw (eventual consistency)
-            // Failure record remains in memory (TTL will evict)
-            logger.error(e) {
-                "Failed to persist failure to DB (will retry on next request): " +
-                    "key=$idempotencyKey, error=${e.message}"
+            // Fallback: DLQ persistence
+            try {
+                val payload = objectMapper.writeValueAsString(mapOf(
+                    "fromAccountId" to failedTransfer.fromAccountId,
+                    "toAccountId" to failedTransfer.toAccountId,
+                    "amount" to failedTransfer.amount.toPlainString(),
+                    "description" to failedTransfer.description,
+                    "idempotencyKey" to idempotencyKey,
+                    "errorMessage" to (cause.message ?: "Unknown error"),
+                    "originalException" to cause::class.simpleName
+                ))
+
+                deadLetterRepository.save(
+                    DeadLetterEntry(
+                        idempotencyKey = idempotencyKey,
+                        eventType = DeadLetterEventType.FAILURE_PERSISTENCE_FAILED,
+                        payload = payload,
+                        failureReason = e.message
+                    )
+                )
+
+                logger.warn { "Failure persisted to DLQ: key=$idempotencyKey" }
+            } catch (dlqError: Exception) {
+                // Last resort: log both errors
+                // Failure record remains in memory (TTL will evict)
+                logger.error(e) { "Failed to persist failure to DB: key=$idempotencyKey" }
+                logger.error(dlqError) { "Failed to save to DLQ: key=$idempotencyKey" }
             }
         }
     }
