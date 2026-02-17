@@ -199,6 +199,7 @@ override suspend fun findByAccountId(accountId: Long): List<LedgerEntry> {
 - **Operations**: `docs/OPERATIONS_GUIDE.md` - 운영 환경 설정
 
 ### 아키텍처 가이드
+- **Design Decisions**: `docs/DESIGN_DECISIONS.md` - 패턴별 도입 근거, 필요성, 대안 분석
 - **Suspend Best Practices**: `docs/SUSPEND_BEST_PRACTICES.md` - 레이어별 Suspend 분석
 - **Suspend for Java**: `docs/SUSPEND_FOR_JAVA_DEVELOPERS.md` - Java 개발자용 가이드
 - **POC 결과**: `docs/POC_SUSPEND_VALIDATION_RESULT.md` - ArchUnit 검증

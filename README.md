@@ -314,6 +314,8 @@ curl http://localhost:8080/api/accounts/1 \
 2. 비동기 DB 영속화 (Fire-and-Forget)
 3. 클라이언트 빠른 응답 (~50ms)
 
+> 각 패턴의 도입 배경과 의사결정 근거는 [Design Decisions](docs/DESIGN_DECISIONS.md)를 참조하세요.
+
 ## 테스트
 
 ### 실행
@@ -375,6 +377,7 @@ curl http://localhost:8080/api/accounts/1 \
 - **[Operations Guide](docs/OPERATIONS_GUIDE.md)**: 운영 환경 설정, 모니터링
 
 ### 🏗️ 아키텍처 가이드
+- **[설계 결정 기록 (Design Decisions)](docs/DESIGN_DECISIONS.md)**: 각 패턴의 도입 배경, 필요성, 대안 분석
 - **[Suspend 함수 분석 & Best Practice](docs/SUSPEND_BEST_PRACTICES.md)**: 레이어별 Suspend 심층 분석, 트랜잭션 관리, Flow 처리
 - **[Java 개발자를 위한 Suspend 가이드](docs/SUSPEND_FOR_JAVA_DEVELOPERS.md)**: Blocking I/O, CompletableFuture, Reactor와 비교 (Virtual Threads 포함)
 
