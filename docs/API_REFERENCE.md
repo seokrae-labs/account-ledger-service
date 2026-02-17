@@ -6,6 +6,7 @@
 
 **Swagger UI**: http://localhost:8080/swagger-ui.html
 **OpenAPI Spec**: http://localhost:8080/v3/api-docs
+**curl 시나리오**: [API_CURL_SCENARIO.md](API_CURL_SCENARIO.md)
 
 ## 엔드포인트 요약
 
