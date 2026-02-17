@@ -175,16 +175,24 @@ sequenceDiagram
 
 **이중 처리 (Duplicate Processing)**: 네트워크 타임아웃으로 클라이언트가 동일 요청을 재시도할 때, 동일 이체가 2번 실행되는 문제.
 
-#### 문제 시나리오
-```
-사용자: 1000원 이체 요청 (Idempotency-Key: abc-123)
-서버: 이체 처리 완료
-네트워크: 응답 패킷 손실 ❌
-클라이언트: 타임아웃 → 재시도 (동일 키)
+**❌ 멱등성 없음 — 이중 출금 발생**
 
-멱등성 없으면:
-  → 서버가 다시 1000원 이체
-  → 총 2000원 출금! 💸
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+
+    Client->>Server: 이체 요청 1000원<br/>(Idempotency-Key: abc-123)
+    Server->>Server: 이체 처리 완료
+    Server--xClient: 응답 패킷 손실! ❌
+
+    Note over Client: 타임아웃 감지 → 재시도
+
+    Client->>Server: 이체 요청 1000원<br/>(동일 키: abc-123)
+    Server->>Server: 이체 처리 완료 (중복!)
+    Server-->>Client: 200 OK
+
+    Note over Client,Server: 💸 총 2000원 출금!
 ```
 
 ### 해결 방법: 3-Tier 멱등성
@@ -216,13 +224,23 @@ transactionExecutor.execute {
 - **목적**: Race Condition 완전 차단
 - **필수 이유**: Tier 2 조회 후 트랜잭션 시작 전 다른 TX가 끼어들 수 있음
 
-#### Race Condition 예시 (Tier 3 없을 때)
-```
-[TX1] Tier 2: 없음 확인
-[TX2] Tier 2: 없음 확인 (거의 동시)
-[TX1] 트랜잭션 시작 → 이체 처리 ✓
-[TX2] 트랜잭션 시작 → 이체 처리 ✓
-→ 이중 출금 발생! 💸
+**❌ Tier 3 없을 때 — Race Condition 발생**
+
+```mermaid
+sequenceDiagram
+    participant TX1
+    participant TX2
+    participant DB
+
+    Note over TX1,TX2: 거의 동시에 요청 (동일 Idempotency-Key)
+
+    TX1->>DB: Tier 2: 없음 확인
+    TX2->>DB: Tier 2: 없음 확인
+
+    TX1->>DB: 트랜잭션 시작 → 이체 처리 ✓
+    TX2->>DB: 트랜잭션 시작 → 이체 처리 ✓
+
+    Note over TX1,TX2: 💸 이중 출금 발생!<br/>Tier 2 이후 트랜잭션 시작 전<br/>TX2가 끼어들었음
 ```
 
 #### 3-Tier 플로우차트
