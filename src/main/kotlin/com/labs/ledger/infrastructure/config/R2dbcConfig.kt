@@ -4,6 +4,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.r2dbc.repository.config.EnableR2dbcRepositories
 import org.springframework.transaction.ReactiveTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.reactive.TransactionalOperator
 import org.springframework.transaction.support.DefaultTransactionDefinition
 
@@ -21,6 +22,7 @@ class R2dbcConfig {
     fun transactionalOperator(transactionManager: ReactiveTransactionManager): TransactionalOperator {
         val definition = DefaultTransactionDefinition().apply {
             timeout = 30  // 30 seconds
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
         }
         return TransactionalOperator.create(transactionManager, definition)
     }
