@@ -219,3 +219,57 @@ readinessProbe:
   initialDelaySeconds: 20
   periodSeconds: 5
 ```
+
+## 비즈니스 메트릭 및 경보
+
+이체 실패 처리 파이프라인(FailureRegistry → 비동기 DB 영속화 → DLQ fallback)의 가시성을 위해 Micrometer 커스텀 메트릭이 등록됩니다.
+
+### 등록된 메트릭 목록
+
+| 메트릭 | 타입 | 설명 | 경보 기준 |
+|--------|------|------|-----------|
+| `cache.gets{name=failureRegistry,result=hit}` | Counter | 캐시 히트 수 | - |
+| `cache.gets{name=failureRegistry,result=miss}` | Counter | 캐시 미스 수 | - |
+| `cache.evictions{name=failureRegistry}` | Counter | TTL/용량 초과로 퇴거된 항목 수 | - |
+| `cache.size{name=failureRegistry}` | Gauge | 현재 캐시 항목 수 | > 1,000 → WARN |
+| `failure_registry.size` | Gauge | FailureRegistry 현재 크기 (직관적 이름) | > 1,000 → WARN |
+| `transfer.failure.persist.success` | Counter | 비동기 DB 영속화 성공 횟수 | - |
+| `transfer.failure.persist.error` | Counter | DB 영속화 실패 → DLQ 전환 횟수 | > 0/5min → WARN |
+| `transfer.failure.dlq.error` | Counter | DLQ 저장도 실패한 횟수 | > 0 → CRITICAL |
+
+### 경보 임계치 근거
+
+- **`failure_registry.size > 1,000`**: 비동기 영속화 지연 또는 처리 적체 징후. 10,000 한도의 10% 도달 시 조기 경보
+- **`transfer.failure.persist.error > 0/5min`**: DB 장애나 일시적 연결 문제 감지. 운영 중 발생 시 DLQ를 통한 보상 트랜잭션 필요
+- **`transfer.failure.dlq.error > 0`**: 최악의 시나리오로, 데이터 유실 위험. 즉시 대응 필요 (CRITICAL)
+
+### Actuator를 통한 메트릭 조회
+
+```bash
+# FailureRegistry 현재 크기
+curl http://localhost:8080/actuator/metrics/failure_registry.size
+
+# 비동기 DB 영속화 성공 횟수
+curl http://localhost:8080/actuator/metrics/transfer.failure.persist.success
+
+# DLQ fallback 횟수 (정상 운영 시 0)
+curl http://localhost:8080/actuator/metrics/transfer.failure.persist.error
+
+# DLQ 저장 실패 횟수 (반드시 0이어야 함)
+curl http://localhost:8080/actuator/metrics/transfer.failure.dlq.error
+
+# Caffeine 캐시 히트/미스 (name 태그 필터)
+curl "http://localhost:8080/actuator/metrics/cache.gets?tag=name:failureRegistry"
+```
+
+### 응답 예시
+
+```json
+{
+  "name": "transfer.failure.persist.error",
+  "measurements": [
+    { "statistic": "COUNT", "value": 0.0 }
+  ],
+  "availableTags": []
+}
+```

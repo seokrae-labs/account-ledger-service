@@ -27,6 +27,8 @@ import com.labs.ledger.domain.port.TransferUseCase
 import com.labs.ledger.domain.model.TransferCommand
 import com.labs.ledger.application.support.retryOnOptimisticLock
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.micrometer.core.instrument.Counter
+import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
@@ -42,8 +44,21 @@ class TransferService(
     private val failureRegistry: FailureRegistry,
     private val deadLetterRepository: DeadLetterRepository,
     private val objectMapper: ObjectMapper,
-    private val asyncScope: CoroutineScope
+    private val asyncScope: CoroutineScope,
+    private val meterRegistry: MeterRegistry
 ) : TransferUseCase {
+
+    private val persistSuccessCounter: Counter = Counter.builder("transfer.failure.persist.success")
+        .description("Async failure DB persistence succeeded")
+        .register(meterRegistry)
+
+    private val persistErrorCounter: Counter = Counter.builder("transfer.failure.persist.error")
+        .description("Async failure DB persistence failed, sent to DLQ")
+        .register(meterRegistry)
+
+    private val dlqErrorCounter: Counter = Counter.builder("transfer.failure.dlq.error")
+        .description("DLQ save also failed (worst case)")
+        .register(meterRegistry)
 
     override suspend fun execute(command: TransferCommand): Transfer {
         val (idempotencyKey, fromAccountId, toAccountId, amount, description) = command
@@ -294,8 +309,10 @@ class TransferService(
 
             // Remove from memory after successful DB persistence
             failureRegistry.remove(idempotencyKey)
+            persistSuccessCounter.increment()
         } catch (e: Exception) {
             // Fallback: DLQ persistence
+            persistErrorCounter.increment()
             try {
                 val payload = objectMapper.writeValueAsString(mapOf(
                     "fromAccountId" to failedTransfer.fromAccountId,
@@ -320,6 +337,7 @@ class TransferService(
             } catch (dlqError: Exception) {
                 // Last resort: log both errors
                 // Failure record remains in memory (TTL will evict)
+                dlqErrorCounter.increment()
                 logger.error(e) { "Failed to persist failure to DB: key=$idempotencyKey" }
                 logger.error(dlqError) { "Failed to save to DLQ: key=$idempotencyKey" }
             }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.labs.ledger.application.service.*
 import com.labs.ledger.application.support.InMemoryFailureRegistry
 import com.labs.ledger.domain.port.*
+import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import org.springframework.context.annotation.Bean
@@ -67,7 +68,8 @@ class UseCaseConfig {
         failureRegistry: FailureRegistry,
         deadLetterRepository: DeadLetterRepository,
         objectMapper: ObjectMapper,
-        asyncCoroutineScope: CoroutineScope
+        asyncCoroutineScope: CoroutineScope,
+        meterRegistry: MeterRegistry
     ): TransferUseCase {
         return TransferService(
             accountRepository,
@@ -78,7 +80,8 @@ class UseCaseConfig {
             failureRegistry,
             deadLetterRepository,
             objectMapper,
-            asyncCoroutineScope
+            asyncCoroutineScope,
+            meterRegistry
         )
     }
 
