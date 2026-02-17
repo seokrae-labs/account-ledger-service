@@ -15,7 +15,6 @@ import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -45,7 +44,6 @@ class TransferServiceTest {
     private val deadLetterRepository: DeadLetterRepository = mockk(relaxed = true)
     private val objectMapper: ObjectMapper = ObjectMapper()
     private val asyncScope: CoroutineScope = CoroutineScope(SupervisorJob())
-    private val meterRegistry = SimpleMeterRegistry()
 
     private val service = TransferService(
         accountRepository,
@@ -56,8 +54,7 @@ class TransferServiceTest {
         failureRegistry,
         deadLetterRepository,
         objectMapper,
-        asyncScope,
-        meterRegistry
+        asyncScope
     )
 
     // ============================================

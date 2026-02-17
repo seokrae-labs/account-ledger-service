@@ -64,11 +64,6 @@ class InMemoryFailureRegistry(
     }
 
     /**
-     * Expose internal Caffeine cache for metrics binding (CaffeineCacheMetrics)
-     */
-    fun getCache(): Cache<String, FailureRecord> = cache
-
-    /**
      * Get cache statistics for monitoring
      */
     fun stats(): CacheStats {

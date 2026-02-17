@@ -16,7 +16,6 @@ import com.labs.ledger.domain.port.LedgerEntryRepository
 import com.labs.ledger.domain.port.TransactionExecutor
 import com.labs.ledger.domain.port.TransferAuditRepository
 import com.labs.ledger.domain.port.TransferRepository
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -46,7 +45,6 @@ class TransferServiceFailurePathTest {
     private val failureRegistry: FailureRegistry = mockk(relaxed = true)
     private val deadLetterRepository: DeadLetterRepository = mockk(relaxed = true)
     private val objectMapper = ObjectMapper()
-    private val meterRegistry = SimpleMeterRegistry()
 
     private lateinit var testScope: TestScope
     private lateinit var service: TransferService
@@ -84,7 +82,7 @@ class TransferServiceFailurePathTest {
         service = TransferService(
             accountRepository, ledgerEntryRepository, transferRepository,
             transactionExecutor, transferAuditRepository, failureRegistry,
-            deadLetterRepository, objectMapper, testScope, meterRegistry
+            deadLetterRepository, objectMapper, testScope
         )
         // 공통 스텁: fast-path 및 double-check 모두 null 반환
         every { failureRegistry.get(idempotencyKey) } returns null
