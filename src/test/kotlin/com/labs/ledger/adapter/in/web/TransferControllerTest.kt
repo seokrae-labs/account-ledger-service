@@ -7,6 +7,7 @@ import com.labs.ledger.domain.port.GetTransfersUseCase
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.exception.InsufficientBalanceException
+import com.labs.ledger.domain.exception.InvalidAccountStatusException
 import com.labs.ledger.domain.exception.InvalidTransferStatusTransitionException
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferCommand
@@ -434,6 +435,142 @@ class TransferControllerTest {
             .expectBody()
             .jsonPath("$.error").isEqualTo("INSUFFICIENT_BALANCE")
             .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `자기 자신에게 이체 시도 - 400 Invalid Request`() = runTest {
+        // when & then - TransferCommand.init require(fromAccountId != toAccountId) → IllegalArgumentException → INVALID_REQUEST
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", "self-transfer-key")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 1,
+                    "amount": 100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_REQUEST")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `음수 금액으로 이체 시도 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", "negative-amount-key")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 2,
+                    "amount": -100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("amount")
+    }
+
+    @Test
+    fun `비활성 출금 계좌로 이체 시도 - 400 Bad Request`() = runTest {
+        // given
+        val idempotencyKey = "inactive-from-key"
+        coEvery {
+            transferUseCase.execute(any<TransferCommand>())
+        } throws InvalidAccountStatusException("Source account is not active")
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", idempotencyKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 2,
+                    "amount": 100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_ACCOUNT_STATUS")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `비활성 입금 계좌로 이체 시도 - 400 Bad Request`() = runTest {
+        // given
+        val idempotencyKey = "inactive-to-key"
+        coEvery {
+            transferUseCase.execute(any<TransferCommand>())
+        } throws InvalidAccountStatusException("Destination account is not active")
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .header("Idempotency-Key", idempotencyKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {
+                    "fromAccountId": 1,
+                    "toAccountId": 2,
+                    "amount": 100.00
+                }
+            """.trimIndent())
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_ACCOUNT_STATUS")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `이체 목록 조회 시 page가 음수이면 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.get()
+            .uri("/api/transfers?page=-1&size=20")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("page")
+    }
+
+    @Test
+    fun `이체 목록 조회 시 size가 0이면 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.get()
+            .uri("/api/transfers?page=0&size=0")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("size")
+    }
+
+    @Test
+    fun `이체 목록 조회 시 size가 100 초과이면 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.get()
+            .uri("/api/transfers?page=0&size=101")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("size")
     }
 
     @Test

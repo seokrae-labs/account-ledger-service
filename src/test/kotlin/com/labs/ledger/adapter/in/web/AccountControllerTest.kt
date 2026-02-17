@@ -409,6 +409,152 @@ class AccountControllerTest {
     }
 
     @Test
+    fun `입금 시 계좌 미존재 - 404 Not Found`() = runTest {
+        // given
+        val accountId = 999L
+        val amount = BigDecimal("100.00")
+        coEvery { depositUseCase.execute(accountId, amount, null) } throws AccountNotFoundException("Account not found")
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/accounts/$accountId/deposits")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"amount":100.00}""")
+            .exchange()
+            .expectStatus().isNotFound
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("ACCOUNT_NOT_FOUND")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `계좌 목록 조회 시 page가 음수이면 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.get()
+            .uri("/api/accounts?page=-1&size=20")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("page")
+    }
+
+    @Test
+    fun `계좌 목록 조회 시 size가 0이면 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.get()
+            .uri("/api/accounts?page=0&size=0")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("size")
+    }
+
+    @Test
+    fun `계좌 목록 조회 시 size가 100 초과이면 - 400 Validation Failed`() = runTest {
+        // when & then
+        webTestClient.get()
+            .uri("/api/accounts?page=0&size=101")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("VALIDATION_FAILED")
+            .jsonPath("$.message").isEqualTo("Request validation failed")
+            .jsonPath("$.errors[0].field").isEqualTo("size")
+    }
+
+    @Test
+    fun `원장 엔트리 조회 시 계좌 미존재 - 404 Not Found`() = runTest {
+        // given
+        val accountId = 999L
+        coEvery { getLedgerEntriesUseCase.execute(accountId, 0, 20) } throws AccountNotFoundException("Account not found")
+
+        // when & then
+        webTestClient.get()
+            .uri("/api/accounts/$accountId/ledger-entries?page=0&size=20")
+            .exchange()
+            .expectStatus().isNotFound
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("ACCOUNT_NOT_FOUND")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `잘못된 상태 값으로 상태 변경 시도 - 400 Invalid Request`() = runTest {
+        // when & then - AccountStatus.valueOf fails → IllegalArgumentException → INVALID_REQUEST
+        webTestClient.patch()
+            .uri("/api/accounts/1/status")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"status":"INVALID_STATUS"}""")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_REQUEST")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `상태 변경 시 계좌 미존재 - 404 Not Found`() = runTest {
+        // given
+        val accountId = 999L
+        coEvery { updateAccountStatusUseCase.execute(accountId, AccountStatus.SUSPENDED) } throws AccountNotFoundException("Account not found")
+
+        // when & then
+        webTestClient.patch()
+            .uri("/api/accounts/$accountId/status")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"status":"SUSPENDED"}""")
+            .exchange()
+            .expectStatus().isNotFound
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("ACCOUNT_NOT_FOUND")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `이미 활성 상태인 계좌에 ACTIVE 변경 시도 - 400 Bad Request`() = runTest {
+        // given
+        val accountId = 1L
+        coEvery {
+            updateAccountStatusUseCase.execute(accountId, AccountStatus.ACTIVE)
+        } throws InvalidAccountStatusException("Account is already active")
+
+        // when & then
+        webTestClient.patch()
+            .uri("/api/accounts/$accountId/status")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"status":"ACTIVE"}""")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_ACCOUNT_STATUS")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
+    fun `닫힌 계좌에 ACTIVE 변경 시도 - 400 Bad Request`() = runTest {
+        // given
+        val accountId = 1L
+        coEvery {
+            updateAccountStatusUseCase.execute(accountId, AccountStatus.ACTIVE)
+        } throws InvalidAccountStatusException("Cannot activate a closed account")
+
+        // when & then
+        webTestClient.patch()
+            .uri("/api/accounts/$accountId/status")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"status":"ACTIVE"}""")
+            .exchange()
+            .expectStatus().isBadRequest
+            .expectBody()
+            .jsonPath("$.error").isEqualTo("INVALID_ACCOUNT_STATUS")
+            .jsonPath("$.message").exists()
+    }
+
+    @Test
     fun `계좌 상태 변경 성공 - 200 OK`() = runTest {
         // given
         val accountId = 1L
