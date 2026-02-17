@@ -1,11 +1,13 @@
 package com.labs.ledger.application.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.labs.ledger.domain.exception.DuplicateTransferException
 import com.labs.ledger.domain.model.Account
 import com.labs.ledger.domain.model.AccountStatus
 import com.labs.ledger.domain.model.Transfer
 import com.labs.ledger.domain.model.TransferStatus
 import com.labs.ledger.domain.port.AccountRepository
+import com.labs.ledger.domain.port.DeadLetterRepository
 import com.labs.ledger.domain.port.FailureRecord
 import com.labs.ledger.domain.port.FailureRegistry
 import com.labs.ledger.domain.port.LedgerEntryRepository
@@ -38,6 +40,8 @@ class TransferServiceTest {
     private val transactionExecutor: TransactionExecutor = mockk()
     private val transferAuditRepository: TransferAuditRepository = mockk()
     private val failureRegistry: FailureRegistry = mockk(relaxed = true)
+    private val deadLetterRepository: DeadLetterRepository = mockk(relaxed = true)
+    private val objectMapper: ObjectMapper = ObjectMapper()
     private val asyncScope: CoroutineScope = CoroutineScope(SupervisorJob())
 
     private val service = TransferService(
@@ -47,6 +51,8 @@ class TransferServiceTest {
         transactionExecutor,
         transferAuditRepository,
         failureRegistry,
+        deadLetterRepository,
+        objectMapper,
         asyncScope
     )
 
