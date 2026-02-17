@@ -103,21 +103,21 @@ sequenceDiagram
 
 **교착상태 (Deadlock)**: 두 트랜잭션이 서로 다른 순서로 계좌를 잠그면서 무한 대기 상태에 빠지는 문제.
 
-#### 문제 시나리오
-```
-계좌 A: ID=1
-계좌 B: ID=2
+**❌ 정렬 없음 — Deadlock 발생**
 
-[TX1] A → B 이체
-  1. SELECT * FROM accounts WHERE id=1 FOR UPDATE (A 잠금)
-  2. SELECT * FROM accounts WHERE id=2 FOR UPDATE (대기...)
+```mermaid
+sequenceDiagram
+    participant TX1 as TX1<br/>(A→B 이체)
+    participant AccA as Account A (ID=1)
+    participant AccB as Account B (ID=2)
+    participant TX2 as TX2<br/>(B→A 이체)
 
-[TX2] B → A 이체 (동시 발생)
-  1. SELECT * FROM accounts WHERE id=2 FOR UPDATE (B 잠금)
-  2. SELECT * FROM accounts WHERE id=1 FOR UPDATE (대기...)
+    TX1->>AccA: FOR UPDATE (A 잠금) ✓
+    TX2->>AccB: FOR UPDATE (B 잠금) ✓
+    TX1->>AccB: FOR UPDATE (B 잠금)... 대기
+    TX2->>AccA: FOR UPDATE (A 잠금)... 대기
 
-→ TX1은 B 잠금 대기, TX2는 A 잠금 대기
-→ PostgreSQL이 Deadlock 감지 → 한 TX 강제 중단 (500 에러)
+    Note over TX1,TX2: 💀 Deadlock!<br/>TX1은 B 대기, TX2는 A 대기<br/>PostgreSQL 감지 → TX 강제 중단 (500)
 ```
 
 ### 해결 방법
@@ -132,40 +132,7 @@ fun execute(fromId: Long, toId: Long, amount: BigDecimal) {
 }
 ```
 
-#### 동작
-```
-[TX1] A(1) → B(2) 이체
-  잠금 순서: 1 → 2
-
-[TX2] B(2) → A(1) 이체
-  잠금 순서: 1 → 2 (동일!)
-
-→ TX2는 TX1이 1번 계좌 잠금을 해제할 때까지 대기
-→ TX1 완료 후 TX2 순차 실행 (Deadlock 없음)
-```
-
-#### 비교 다이어그램
-
-**❌ 정렬 없음 - Deadlock 발생**
-
-```mermaid
-sequenceDiagram
-    participant TX1 as TX1<br/>(A→B 이체)
-    participant AccA as Account A
-    participant AccB as Account B
-    participant TX2 as TX2<br/>(B→A 이체)
-
-    Note over TX1,TX2: ❌ 정렬 없음 (순서 다름)
-
-    TX1->>AccA: LOCK A ✓
-    TX2->>AccB: LOCK B ✓
-    TX1->>AccB: LOCK B... (대기 중)
-    TX2->>AccA: LOCK A... (대기 중)
-
-    Note over TX1,TX2: 💀 Deadlock!<br/>PostgreSQL이 감지 후 TX 중단
-```
-
-**✅ ID 정렬 - Deadlock 방지**
+**✅ ID 정렬 — Deadlock 방지**
 
 ```mermaid
 sequenceDiagram
@@ -174,16 +141,16 @@ sequenceDiagram
     participant Acc2 as Account 2
     participant TX2 as TX2<br/>(B→A 이체)
 
-    Note over TX1,TX2: ✅ ID 정렬 (1→2 순서 통일)
+    Note over TX1,TX2: 잠금 순서 통일: 1 → 2
 
-    TX1->>Acc1: LOCK 1 ✓
-    TX1->>Acc2: LOCK 2 ✓
+    TX1->>Acc1: FOR UPDATE (1 잠금) ✓
+    TX1->>Acc2: FOR UPDATE (2 잠금) ✓
     Note over TX1: 이체 처리 완료
 
-    TX2->>Acc1: LOCK 1... (TX1 완료 대기)
+    TX2->>Acc1: FOR UPDATE (1 잠금)... TX1 완료 대기
     TX1-->>Acc1: UNLOCK 1, 2
-    TX2->>Acc1: LOCK 1 ✓
-    TX2->>Acc2: LOCK 2 ✓
+    TX2->>Acc1: FOR UPDATE (1 잠금) ✓
+    TX2->>Acc2: FOR UPDATE (2 잠금) ✓
     Note over TX2: 이체 처리 완료
 ```
 
