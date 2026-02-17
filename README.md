@@ -266,6 +266,122 @@ docker compose up -d postgres
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - 상세 API 명세: [API_REFERENCE.md](docs/API_REFERENCE.md)
 
+### Swagger 사용 시나리오 (dev 프로필)
+
+Swagger UI에서 실제 API를 호출해보는 가장 빠른 흐름입니다.
+
+1. 애플리케이션 실행 후 Swagger UI 접속
+```bash
+docker compose up -d postgres
+./gradlew bootRun
+```
+- 접속: `http://localhost:8080/swagger-ui.html`
+
+2. 개발용 JWT 토큰 발급 (`POST /api/dev/tokens`)
+- `Try it out` 클릭 후 아래 Body로 `Execute`
+```json
+{
+  "userId": "user123",
+  "username": "testuser"
+}
+```
+- 응답의 `token` 값을 복사
+
+3. Swagger `Authorize` 설정
+- 우측 상단 `Authorize` 클릭
+- 값 입력: `Bearer <token>`
+- `Authorize` -> `Close`
+
+4. 인증 필요한 조회 API 호출
+- 예: `GET /api/accounts`
+- 정상일 때 `200 OK` 확인
+
+5. 쓰기 API 호출 시나리오
+- `POST /api/accounts`로 계좌 2개 생성
+- `POST /api/accounts/{id}/deposits`로 송금 계좌에 금액 입금
+- `POST /api/transfers` 호출 시 Header에 `Idempotency-Key`를 반드시 추가
+- `Idempotency-Key` 예시: UUID (`550e8400-e29b-41d4-a716-446655440000`)
+
+6. 결과 검증
+- `GET /api/transfers`로 이체 내역 확인
+- `GET /api/accounts/{id}/ledger-entries`로 원장 기록 확인
+
+7. 자주 보는 응답 코드
+- `401 UNAUTHORIZED`: 토큰 누락/만료/형식 오류
+- `400 VALIDATION_FAILED`: 요청 본문/파라미터 검증 실패
+- `409 DUPLICATE_TRANSFER`: 동일 `Idempotency-Key` 재사용
+
+참고: `prod` 프로필에서는 Swagger/OpenAPI 및 dev 토큰 발급 엔드포인트가 비활성화됩니다.
+
+### curl 호출 시나리오 (dev 프로필)
+
+Swagger 없이 터미널에서 동일한 흐름을 검증하는 E2E 시나리오입니다.
+
+전제:
+- 애플리케이션 실행 상태 (`http://localhost:8080`)
+- `jq` 설치 필요
+
+```bash
+set -euo pipefail
+
+BASE_URL="http://localhost:8080"
+
+echo "[1] Dev 토큰 발급"
+TOKEN=$(curl -s -X POST "$BASE_URL/api/dev/tokens" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"user123","username":"testuser"}' | jq -r '.token')
+echo "TOKEN issued: ${TOKEN:0:20}..."
+
+echo "[2] 송금 계좌/수취 계좌 생성"
+FROM_ACCOUNT_ID=$(curl -s -X POST "$BASE_URL/api/accounts" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ownerName":"Sender"}' | jq -r '.id')
+
+TO_ACCOUNT_ID=$(curl -s -X POST "$BASE_URL/api/accounts" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ownerName":"Receiver"}' | jq -r '.id')
+
+echo "FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID"
+echo "TO_ACCOUNT_ID=$TO_ACCOUNT_ID"
+
+echo "[3] 송금 계좌 입금"
+curl -s -X POST "$BASE_URL/api/accounts/$FROM_ACCOUNT_ID/deposits" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":1000.00,"description":"Initial funding"}' | jq
+
+echo "[4] 이체 실행 (Idempotency-Key 필수)"
+IDEMPOTENCY_KEY=$(uuidgen)
+curl -s -X POST "$BASE_URL/api/transfers" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: $IDEMPOTENCY_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"fromAccountId\": $FROM_ACCOUNT_ID,
+    \"toAccountId\": $TO_ACCOUNT_ID,
+    \"amount\": 250.00,
+    \"description\": \"Transfer via curl scenario\"
+  }" | jq
+
+echo "[5] 결과 확인 - 이체 목록"
+curl -s "$BASE_URL/api/transfers?page=0&size=20" \
+  -H "Authorization: Bearer $TOKEN" | jq
+
+echo "[6] 결과 확인 - 각 계좌 원장"
+curl -s "$BASE_URL/api/accounts/$FROM_ACCOUNT_ID/ledger-entries?page=0&size=20" \
+  -H "Authorization: Bearer $TOKEN" | jq
+
+curl -s "$BASE_URL/api/accounts/$TO_ACCOUNT_ID/ledger-entries?page=0&size=20" \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+검증 포인트:
+- 이체 응답의 `status`가 `COMPLETED`
+- 송금/수취 계좌 원장에 각각 `DEBIT`/`CREDIT` 기록 존재
+- 동일한 `Idempotency-Key` 재사용 시 `409 DUPLICATE_TRANSFER` 응답
+
 ## 인증 (Authentication)
 
 모든 `/api/**` 엔드포인트는 JWT 토큰 인증이 필요합니다.
