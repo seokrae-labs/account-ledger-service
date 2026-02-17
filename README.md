@@ -73,417 +73,181 @@ graph LR
 - **Domain**: 핵심 비즈니스 로직 및 규칙
 - **Adapter Out**: 데이터베이스 영속성 처리
 
-## 시작하기
+## 핵심 흐름 (Sequence Diagrams)
+
+### 1. 입금 흐름 (Deposit)
+
+```mermaid
+sequenceDiagram
+    participant C as Controller
+    participant DS as DepositService
+    participant Retry as retryOnOptimisticLock
+    participant TX as TransactionExecutor
+    participant AR as AccountRepository
+    participant A as Account (Domain)
+    participant LR as LedgerEntryRepository
+
+    C->>DS: execute(accountId, amount)
+    DS->>Retry: retry wrapper
+    Retry->>TX: execute { ... }
+    TX->>AR: findByIdForUpdate(id)
+    AR-->>TX: Account (FOR UPDATE)
+    TX->>A: deposit(amount)
+    A-->>TX: updatedAccount
+    TX->>AR: save(updatedAccount)
+    AR-->>TX: savedAccount
+    TX->>LR: save(LedgerEntry)
+    LR-->>TX: saved
+    TX-->>Retry: savedAccount
+    Retry-->>DS: result
+    DS-->>C: Account (with new balance)
+
+    Note over Retry: Optimistic Lock 실패 시 재시도
+    Note over AR: SELECT ... FOR UPDATE (비관적 잠금)
+    Note over A: 순수 도메인 로직 (I/O 없음)
+```
+
+### 2. 이체 성공 흐름 (Transfer Success)
+
+```mermaid
+sequenceDiagram
+    participant C as Controller
+    participant TS as TransferService
+    participant FR as FailureRegistry
+    participant TR as TransferRepository
+    participant Retry as retryOnOptimisticLock
+    participant TX as TransactionExecutor
+    participant AR as AccountRepository
+    participant LR as LedgerEntryRepository
+    participant AuditR as AuditRepository
+
+    C->>TS: execute(key, from, to, amount)
+
+    Note over TS,FR: 1. Memory-First Check (~1ms)
+    TS->>FR: get(idempotencyKey)
+    FR-->>TS: null (not in memory)
+
+    Note over TS,TR: 2. DB Fast Path (멱등성 체크)
+    TS->>TR: findByIdempotencyKey(key)
+    TR-->>TS: null (신규 요청)
+
+    TS->>Retry: retry wrapper
+    Retry->>TX: execute { ... }
+
+    Note over TX,TR: 3. Double-Check (Race Condition 방지)
+    TX->>TR: findByIdempotencyKey(key)
+    TR-->>TX: null
+
+    Note over TX: 4. PENDING Transfer 생성
+    TX->>TR: save(Transfer PENDING)
+    TR-->>TX: pendingTransfer
+
+    Note over TX,AR: 5. Deadlock Prevention (정렬 잠금)
+    TX->>AR: findByIdsForUpdate([1,2].sorted())
+    AR-->>TX: [fromAccount, toAccount]
+
+    Note over TX: 6. 도메인 로직
+    TX->>TX: fromAccount.withdraw(amount)
+    TX->>TX: toAccount.deposit(amount)
+
+    Note over TX: 7. 계좌 잔액 업데이트
+    TX->>AR: save(debitedAccount)
+    TX->>AR: save(creditedAccount)
+
+    Note over TX,LR: 8. 이중 원장 기록
+    TX->>LR: saveAll([DEBIT, CREDIT])
+    LR-->>TX: saved
+
+    Note over TX: 9. Transfer 완료
+    TX->>TR: save(Transfer COMPLETED)
+    TR-->>TX: completedTransfer
+
+    Note over TX,AuditR: 10. 감사 이벤트
+    TX->>AuditR: save(TRANSFER_COMPLETED)
+    AuditR-->>TX: saved
+
+    TX-->>Retry: completedTransfer
+    Retry-->>TS: result
+    TS-->>C: Transfer (COMPLETED)
+```
+
+### 3. 이체 실패 흐름 (Transfer Failure)
+
+```mermaid
+sequenceDiagram
+    participant C as Controller
+    participant TS as TransferService
+    participant TX as TransactionExecutor
+    participant FR as FailureRegistry
+    participant Async as Background Coroutine
+    participant TR as TransferRepository
+    participant AuditR as AuditRepository
+
+    C->>TS: execute(key, from, to, amount)
+    TS->>TX: execute { ... }
+
+    Note over TX: 비즈니스 로직 실패
+    TX-->>TS: DomainException (잔액 부족 등)
+
+    Note over TS: catch DomainException
+
+    Note over TS,FR: 1. Memory-First Strategy
+    TS->>TS: Create Transfer (FAILED)
+    TS->>FR: register(key, FailureRecord)
+    FR-->>TS: registered (~1ms)
+
+    Note over TS: 2. Launch Async (Fire-and-Forget)
+    TS->>Async: launch { persistFailureAsync() }
+
+    Note over TS,C: 3. 즉시 응답 (~50ms)
+    TS-->>C: throw DomainException
+    C-->>C: 400 INSUFFICIENT_BALANCE
+
+    Note over Async: 비동기 영속화 (백그라운드)
+    Async->>TX: execute { ... }
+    TX->>TR: findByIdempotencyKey(key)
+    TR-->>TX: null (롤백됨)
+
+    Note over TX: Upsert FAILED state
+    TX->>TR: save(Transfer FAILED)
+    TR-->>TX: savedTransfer
+
+    Note over TX,AuditR: 감사 이벤트 기록
+    TX->>AuditR: save(TRANSFER_FAILED_BUSINESS)
+    AuditR-->>TX: saved
+
+    TX-->>Async: success
+
+    Note over Async,FR: DB 저장 후 메모리 정리
+    Async->>FR: remove(key)
+    FR-->>Async: removed
+
+    Note over Async: 백그라운드 완료 (클라이언트 무관)
+```
+
+## 빠른 시작
 
 ### Prerequisites
 
-- **JDK 21** 이상
-- **Docker** 및 **Docker Compose**
+- JDK 21 이상
+- Docker 및 Docker Compose
 
-### 환경 설정
+### 실행
 
-1. 환경변수 설정 (선택사항)
 ```bash
-# .env 파일 생성 (기본값을 사용하려면 스킵 가능)
-cp .env.example .env
-# .env 파일을 편집하여 데이터베이스 자격증명 수정
-```
-
-2. PostgreSQL 실행
-```bash
+# PostgreSQL 시작
 docker compose up -d postgres
-```
 
-3. 애플리케이션 실행
-
-**개발 환경 (기본)**
-```bash
+# 애플리케이션 실행
 ./gradlew bootRun
-# 또는 명시적으로
-./gradlew bootRun --args='--spring.profiles.active=dev'
+
+# 접속
+# http://localhost:8080
 ```
 
-**프로덕션 환경 (환경변수 사용)**
-```bash
-# Option 1: .env 파일 사용 (권장)
-export $(cat .env | xargs) && ./gradlew bootRun --args='--spring.profiles.active=prod'
-
-# Option 2: 직접 환경변수 설정
-export DB_USERNAME=prod_user
-export DB_PASSWORD=secure_password
-export R2DBC_URL=r2dbc:postgresql://prod-host:5432/ledger
-export JDBC_URL=jdbc:postgresql://prod-host:5432/ledger
-./gradlew bootRun --args='--spring.profiles.active=prod'
-```
-
-**테스트 환경**
-```bash
-./gradlew test  # 자동으로 test 프로파일 적용
-```
-
-4. 접속
-```
-http://localhost:8080
-```
-
-### Docker로 실행
-
-**Docker 이미지 빌드**
-```bash
-docker build -t account-ledger-service:latest .
-```
-
-**PostgreSQL과 함께 실행 (Docker Compose 사용)**
-```bash
-# PostgreSQL + 애플리케이션 모두 시작
-docker compose up -d
-
-# 로그 확인
-docker compose logs -f app
-
-# 종료
-docker compose down
-```
-
-**단독 실행 (PostgreSQL이 이미 실행 중인 경우)**
-```bash
-docker run -d \
-  --name account-ledger-service \
-  -p 8080:8080 \
-  -e SPRING_PROFILES_ACTIVE=prod \
-  -e DB_USERNAME=ledger \
-  -e DB_PASSWORD=ledger123 \
-  -e R2DBC_URL=r2dbc:postgresql://host.docker.internal:5432/ledger \
-  -e JDBC_URL=jdbc:postgresql://host.docker.internal:5432/ledger \
-  -e JWT_SECRET=$(openssl rand -base64 32) \
-  account-ledger-service:latest
-```
-
-**헬스체크**
-```bash
-# 애플리케이션 상태 확인
-curl http://localhost:8080/actuator/health
-
-# Liveness probe
-curl http://localhost:8080/actuator/health/liveness
-
-# Readiness probe
-curl http://localhost:8080/actuator/health/readiness
-```
-
-### 프로파일별 설정
-
-| 프로파일 | 용도 | 로깅 레벨 | R2DBC Pool | 특징 |
-|---------|------|----------|-----------|------|
-| **dev** | 로컬 개발 | DEBUG | 5-10 | Flyway clean 허용, 상세 로깅 |
-| **prod** | 프로덕션 | INFO | 20-50 | 커넥션 풀 최적화, Graceful Shutdown |
-| **test** | 자동화 테스트 | DEBUG | 2-5 | **Testcontainers 기반**, Docker만 필요 |
-
-### 환경변수 설정
-
-데이터베이스 자격증명은 환경변수를 통해 외부화할 수 있습니다:
-
-| 환경변수 | 설명 | 기본값 |
-|---------|------|--------|
-| `DB_USERNAME` | 데이터베이스 사용자명 | `ledger` |
-| `DB_PASSWORD` | 데이터베이스 비밀번호 | `ledger123` |
-| `R2DBC_URL` | R2DBC 연결 URL | `r2dbc:postgresql://localhost:5432/ledger` |
-| `JDBC_URL` | JDBC 연결 URL (Flyway용) | `jdbc:postgresql://localhost:5432/ledger` |
-| `JWT_SECRET` | JWT 서명 비밀키 (최소 32자) | `dev-only-secret-...` (dev), **필수** (prod) |
-
-**설정 방법:**
-1. `.env.example`을 `.env`로 복사
-2. `.env` 파일 수정 (이 파일은 Git에 커밋되지 않음)
-3. Docker Compose가 자동으로 `.env` 파일 로드
-
-## 운영 특징
-
-### R2DBC Connection Pool
-
-환경별로 최적화된 R2DBC 커넥션 풀 설정을 제공합니다.
-
-**설정 비교:**
-
-| 설정 | Dev | Prod | Test | 설명 |
-|-----|-----|------|------|------|
-| `initial-size` | 5 | 20 | 2 | 시작 시 생성되는 커넥션 수 |
-| `max-size` | 10 | 50 | 5 | 최대 커넥션 수 |
-| `max-idle-time` | 30m | 30m | 10m | 유휴 커넥션 유지 시간 |
-| `max-lifetime` | 60m | 60m | - | 커넥션 최대 수명 |
-| `max-acquire-time` | 3s | 5s | 3s | 커넥션 획득 최대 대기 시간 |
-| `validation-query` | SELECT 1 | SELECT 1 | - | 커넥션 검증 쿼리 |
-
-**설정 예제 (application-prod.yml):**
-```yaml
-spring:
-  r2dbc:
-    pool:
-      enabled: true
-      initial-size: 20
-      max-size: 50
-      max-idle-time: 30m
-      max-lifetime: 60m
-      max-acquire-time: 5s
-      validation-query: SELECT 1
-```
-
-**Benefits:**
-- 🚀 성능: 커넥션 재사용으로 응답 시간 단축
-- 📊 안정성: 최대 커넥션 수 제한으로 리소스 보호
-- 🔍 신뢰성: Validation query로 불량 커넥션 감지
-- ⚙️ 유연성: 환경별 맞춤 설정
-
-### Timeout Configuration
-
-모든 레이어에서 적절한 타임아웃을 설정하여 무한 대기를 방지합니다.
-
-**타임아웃 설정 요약:**
-
-| 레이어 | 타임아웃 | Dev | Prod | 목적 |
-|-------|---------|-----|------|------|
-| HTTP Connection | `server.netty.connection-timeout` | 10s | 10s | TCP 연결 수립 타임아웃 |
-| HTTP Request | `TimeoutFilter` | 60s | 60s | 전체 요청 처리 타임아웃 |
-| R2DBC Statement | `spring.r2dbc.properties.statement-timeout` | 30s | 60s | 쿼리 실행 타임아웃 |
-| Transaction | `TransactionalOperator` | 30s | 30s | 트랜잭션 타임아웃 |
-| Connection Acquire | `spring.r2dbc.pool.max-acquire-time` | 3s | 5s | 커넥션 획득 타임아웃 |
-
-**설정 예제:**
-```yaml
-# application.yml
-server:
-  netty:
-    connection-timeout: 10s
-
-# application-prod.yml
-spring:
-  r2dbc:
-    properties:
-      statement-timeout: 60s
-    pool:
-      max-acquire-time: 5s
-```
-
-**타임아웃 계층 구조:**
-```
-HTTP Request Timeout (60s)
-  └─ Transaction Timeout (30s)
-      └─ R2DBC Statement Timeout (30s/60s)
-          └─ Connection Acquire Timeout (3s/5s)
-```
-
-**Benefits:**
-- ⏱️ 무한 대기 방지
-- 🛡️ 리소스 보호 (스레드, 커넥션)
-- 🚨 빠른 실패 및 복구
-- 📊 예측 가능한 응답 시간
-
-### Coroutine MDC Context
-
-코루틴 환경에서 MDC(Mapped Diagnostic Context)가 올바르게 전파되도록 설정되어 있습니다.
-
-**구현:**
-```kotlin
-// RequestLoggingFilter
-withContext(MDCContext()) {
-    chain.filter(exchange)  // MDC가 하위 코루틴으로 전파됨
-}
-```
-
-**로그 출력 예시:**
-```
-16:23:45.123 [a1b2c3d4e5f6] INFO  AccountController - Creating account
-16:23:45.234 [a1b2c3d4e5f6] DEBUG AccountService - Validating account
-16:23:45.345 [a1b2c3d4e5f6] DEBUG AccountRepository - Saving account
-```
-
-**Benefits:**
-- 🔍 요청 추적: 동일한 traceId로 전체 요청 흐름 추적
-- 🧵 코루틴 안전: 비동기 작업에서도 MDC 유지
-- 📊 분산 추적: 마이크로서비스 간 요청 추적 가능
-
-### Graceful Shutdown
-
-프로덕션 환경에서 애플리케이션 종료 시 진행 중인 요청을 안전하게 완료합니다.
-
-**설정:**
-```yaml
-# application.yml (공통)
-spring:
-  lifecycle:
-    timeout-per-shutdown-phase: 30s
-
-# application-prod.yml (프로덕션)
-server:
-  shutdown: graceful
-```
-
-**동작 방식:**
-1. 종료 신호 수신 (SIGTERM)
-2. 새로운 요청 거부
-3. 진행 중인 요청 완료 대기 (최대 30초)
-4. 타임아웃 초과 시 강제 종료
-5. 리소스 정리 및 종료
-
-**사용 사례:**
-- 무중단 배포 (Blue-Green, Rolling Update)
-- 컨테이너 재시작 시 데이터 손실 방지
-- 이체 트랜잭션 중 강제 종료 방지
-
-### Actuator & Health Check
-
-운영 환경에서 애플리케이션 상태를 모니터링할 수 있는 엔드포인트를 제공합니다.
-
-**사용 가능한 엔드포인트:**
-
-| Endpoint | Method | 설명 | Dev | Prod |
-|----------|--------|------|-----|------|
-| `/actuator/health` | GET | 헬스체크 (DB, 디스크 등) | ✅ | ✅ |
-| `/actuator/health/liveness` | GET | Liveness probe (K8s) | ✅ | ✅ |
-| `/actuator/health/readiness` | GET | Readiness probe (K8s) | ✅ | ✅ |
-| `/actuator/info` | GET | 빌드 정보 (버전, 시간) | ✅ | ✅ |
-| `/actuator/metrics` | GET | 메트릭 목록 | ✅ | ❌ |
-
-**Health Check 응답 예시:**
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-```json
-{
-  "status": "UP",
-  "components": {
-    "db": {
-      "status": "UP",
-      "details": {
-        "database": "PostgreSQL",
-        "validationQuery": "isValid()"
-      }
-    },
-    "diskSpace": {
-      "status": "UP"
-    },
-    "ping": {
-      "status": "UP"
-    }
-  }
-}
-```
-
-**Build Info 응답 예시:**
-```bash
-curl http://localhost:8080/actuator/info
-```
-
-```json
-{
-  "build": {
-    "artifact": "account-ledger-service",
-    "name": "account-ledger-service",
-    "version": "0.0.1-SNAPSHOT",
-    "group": "com.labs"
-  }
-}
-```
-
-**Kubernetes Probes:**
-```yaml
-livenessProbe:
-  httpGet:
-    path: /actuator/health/liveness
-    port: 8080
-  initialDelaySeconds: 30
-  periodSeconds: 10
-
-readinessProbe:
-  httpGet:
-    path: /actuator/health/readiness
-    port: 8080
-  initialDelaySeconds: 20
-  periodSeconds: 5
-```
-
-## 인증 (Authentication)
-
-### JWT 토큰 기반 인증
-
-모든 `/api/**` 엔드포인트는 **JWT 토큰 인증이 필수**입니다 (dev 토큰 발급 제외).
-
-#### 1. 개발용 토큰 발급 (dev 프로필 전용)
-
-로컬 개발 환경에서 API 테스트를 위한 토큰을 발급받을 수 있습니다.
-
-```bash
-# 토큰 발급
-curl -X POST http://localhost:8080/api/dev/tokens \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userId": "user123",
-    "username": "testuser"
-  }'
-
-# 응답
-{
-  "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwidXNlcm5hbWUiOiJ0ZXN0dXNlciIsImlhdCI6MTcwOTk2NzYwMCwiZXhwIjoxNzEwMDU0MDAwfQ.xxx",
-  "expiresIn": 86400000
-}
-```
-
-⚠️ **주의**: `/api/dev/**` 엔드포인트는 **dev 프로필에서만** 동작합니다. prod 환경에서는 404를 반환합니다.
-
-#### 2. 토큰 사용 방법
-
-발급받은 토큰을 `Authorization` 헤더에 `Bearer {token}` 형식으로 추가합니다.
-
-```bash
-# 1. 토큰 발급
-TOKEN=$(curl -s -X POST http://localhost:8080/api/dev/tokens \
-  -H "Content-Type: application/json" \
-  -d '{"userId": "user123", "username": "testuser"}' \
-  | jq -r '.token')
-
-# 2. 토큰을 사용하여 API 호출
-curl http://localhost:8080/api/accounts/1 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-#### 3. 인증이 필요 없는 엔드포인트 (Public)
-
-| 경로 | 설명 |
-|-----|------|
-| `/actuator/health/**` | 헬스체크 |
-| `/actuator/info` | 빌드 정보 |
-| `/swagger-ui.html` | Swagger UI |
-| `/v3/api-docs/**` | OpenAPI 스펙 |
-| `/api/dev/**` | 개발용 토큰 발급 (dev 프로필 전용) |
-
-#### 4. 인증 오류 응답
-
-**401 Unauthorized** - 인증 실패
-```json
-{
-  "error": "UNAUTHORIZED",
-  "message": "Full authentication is required to access this resource",
-  "timestamp": "2026-02-16T10:00:00"
-}
-```
-
-**403 Forbidden** - 권한 없음
-```json
-{
-  "error": "ACCESS_DENIED",
-  "message": "Access is denied. You do not have permission to access this resource.",
-  "timestamp": "2026-02-16T10:00:00"
-}
-```
+자세한 내용은 [Getting Started Guide](docs/GETTING_STARTED.md)를 참조하세요.
 
 ## API 엔드포인트
-
-### API 문서
-
-**Swagger UI**: http://localhost:8080/swagger-ui.html
-**OpenAPI Spec**: http://localhost:8080/v3/api-docs
-
-### 엔드포인트 요약
 
 **8개 엔드포인트 제공**
 
@@ -498,259 +262,67 @@ curl http://localhost:8080/api/accounts/1 \
 | GET | `/api/transfers` | 200 | 이체 목록 조회 (페이지네이션) |
 | POST | `/api/transfers` | 201 | 이체 |
 
-### 1. 계좌 생성
+**API 문서**:
+- Swagger UI: http://localhost:8080/swagger-ui.html
+- 상세 API 명세: [API_REFERENCE.md](docs/API_REFERENCE.md)
 
-**Request**
+## 인증 (Authentication)
+
+모든 `/api/**` 엔드포인트는 JWT 토큰 인증이 필요합니다.
+
+### 개발용 토큰 발급 (dev 프로필)
+
 ```bash
-curl -X POST http://localhost:8080/api/accounts \
+# 토큰 발급
+TOKEN=$(curl -s -X POST http://localhost:8080/api/dev/tokens \
   -H "Content-Type: application/json" \
-  -d '{
-    "ownerName": "John Doe"
-  }'
+  -d '{"userId": "user123", "username": "testuser"}' \
+  | jq -r '.token')
+
+# API 호출
+curl http://localhost:8080/api/accounts/1 \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-**Response (201 Created)**
-```json
-{
-  "id": 1,
-  "ownerName": "John Doe",
-  "balance": 0.00,
-  "status": "ACTIVE",
-  "version": 0,
-  "createdAt": "2026-02-09T10:00:00",
-  "updatedAt": "2026-02-09T10:00:00"
-}
-```
-
-### 2. 계좌 조회
-
-**Request**
-```bash
-curl http://localhost:8080/api/accounts/1
-```
-
-**Response (200 OK)**
-```json
-{
-  "id": 1,
-  "ownerName": "John Doe",
-  "balance": 1000.00,
-  "status": "ACTIVE",
-  "version": 2,
-  "createdAt": "2026-02-09T10:00:00",
-  "updatedAt": "2026-02-09T10:05:00"
-}
-```
-
-### 3. 입금
-
-**Request**
-```bash
-curl -X POST http://localhost:8080/api/accounts/1/deposits \
-  -H "Content-Type: application/json" \
-  -d '{
-    "amount": 1000.00,
-    "description": "Initial deposit"
-  }'
-```
-
-**Response (200 OK)**
-```json
-{
-  "id": 1,
-  "ownerName": "John Doe",
-  "balance": 1000.00,
-  "status": "ACTIVE",
-  "version": 1,
-  "createdAt": "2026-02-09T10:00:00",
-  "updatedAt": "2026-02-09T10:01:00"
-}
-```
-
-### 4. 이체
-
-**Request (Idempotency-Key 필수)**
-```bash
-curl -X POST http://localhost:8080/api/transfers \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: $(uuidgen)" \
-  -d '{
-    "fromAccountId": 1,
-    "toAccountId": 2,
-    "amount": 500.00,
-    "description": "Payment for service"
-  }'
-```
-
-**Response (201 Created)**
-```json
-{
-  "id": 1,
-  "idempotencyKey": "550e8400-e29b-41d4-a716-446655440000",
-  "fromAccountId": 1,
-  "toAccountId": 2,
-  "amount": 500.00,
-  "status": "COMPLETED",
-  "description": "Payment for service",
-  "createdAt": "2026-02-09T10:10:00",
-  "updatedAt": "2026-02-09T10:10:00"
-}
-```
-
-### 5. 페이지네이션 (리스트 조회)
-
-모든 리스트 조회 API는 페이지네이션을 지원하며, **created_at DESC (최신순)** 으로 고정 정렬됩니다.
-
-**지원 엔드포인트**
-- `GET /api/accounts?page=0&size=20`
-- `GET /api/transfers?page=0&size=20`
-- `GET /api/accounts/{id}/ledger-entries?page=0&size=20`
-
-**Request Parameters**
-
-| 파라미터 | 타입 | 기본값 | 제약 | 설명 |
-|---------|------|-------|------|------|
-| `page` | int | 0 | ≥ 0 | 페이지 번호 (0부터 시작) |
-| `size` | int | 20 | 1-100 | 페이지 크기 |
-
-**Example Request**
-```bash
-curl "http://localhost:8080/api/transfers?page=0&size=10"
-```
-
-**Response (200 OK)**
-```json
-{
-  "content": [
-    {
-      "id": 100,
-      "idempotencyKey": "...",
-      "fromAccountId": 1,
-      "toAccountId": 2,
-      "amount": 500.00,
-      "status": "COMPLETED",
-      "createdAt": "2026-02-09T12:00:00",
-      "updatedAt": "2026-02-09T12:00:00"
-    }
-  ],
-  "page": 0,
-  "size": 10,
-  "totalElements": 42,
-  "totalPages": 5
-}
-```
-
-**정렬 정책**
-- 모든 리스트는 `created_at DESC` (최신순) 고정
-- 원장 서비스 특성상 시간순 조회가 표준
-- 별도 정렬 파라미터 미지원
-
-### 에러 응답
-
-**Error Response Structure**
-```json
-{
-  "error": "ERROR_CODE",
-  "message": "Human-readable error message",
-  "timestamp": "2026-02-09T10:00:00"
-}
-```
-
-**Error Codes** (12개+)
-
-| HTTP Status | Error Code | 설명 |
-|-------------|-----------|------|
-| 400 | `INSUFFICIENT_BALANCE` | 잔액 부족 |
-| 400 | `INVALID_ACCOUNT_STATUS` | 계좌 상태 오류 (폐쇄된 계좌 등) |
-| 400 | `INVALID_AMOUNT` | 유효하지 않은 금액 (음수, 0 등) |
-| 400 | `INVALID_REQUEST` | 잘못된 요청 파라미터 |
-| 400 | `INVALID_INPUT` | 잘못된 요청 본문 또는 파라미터 |
-| 400 | `VALIDATION_FAILED` | 요청 검증 실패 |
-| 401 | `UNAUTHORIZED` | 인증 실패 |
-| 403 | `ACCESS_DENIED` | 권한 없음 |
-| 404 | `ACCOUNT_NOT_FOUND` | 계좌를 찾을 수 없음 |
-| 405 | `METHOD_NOT_ALLOWED` | 허용되지 않은 HTTP 메서드 |
-| 409 | `DUPLICATE_TRANSFER` | 중복 이체 요청 (동일한 Idempotency-Key) |
-| 409 | `OPTIMISTIC_LOCK_FAILED` | 동시 수정 감지 (재시도 필요) |
-| 409 | `INVALID_TRANSFER_STATUS_TRANSITION` | 유효하지 않은 이체 상태 전환 |
-| 500 | `INTERNAL_ERROR` | 내부 서버 오류 |
-| 503 | `DATABASE_ERROR` | 데이터베이스 일시적 오류 |
+자세한 내용은 [Authentication Guide](docs/AUTHENTICATION_GUIDE.md)를 참조하세요.
 
 ## 핵심 설계 패턴
 
 ### 1. Optimistic Locking
 
-데이터베이스의 `@Version` 컬럼을 활용한 낙관적 잠금으로 동시성을 제어합니다.
-
-```kotlin
-// Account 엔티티
-@Version
-val version: Long = 0
-```
-
-- 계좌 수정 시 버전 체크
-- 버전 불일치 시 `OptimisticLockException` 발생 (409 Conflict)
-- 클라이언트는 최신 데이터를 다시 조회하여 재시도
+`@Version` 컬럼을 활용한 낙관적 잠금으로 동시성 제어:
+- 동시 수정 시 `OptimisticLockException` 발생 (409)
+- 클라이언트는 최신 데이터로 재시도
 
 ### 2. Idempotency (멱등성)
 
-이체 API는 `Idempotency-Key` 헤더를 통해 중복 처리를 방지합니다.
-
-**Two-Phase Check**
-
-1. **Fast Path**: 트랜잭션 밖에서 완료된 이체 조회 (성능 최적화)
-2. **Double-Check**: 트랜잭션 내에서 재확인 (Race Condition 방지)
-
-```kotlin
-// Fast path: 트랜잭션 밖
-val existing = transferRepository.findByIdempotencyKey(idempotencyKey)
-if (existing != null && existing.status == COMPLETED) {
-    return existing // 멱등 응답
-}
-
-// Double-check: 트랜잭션 내
-@Transactional
-suspend fun executeTransfer(...) {
-    val recheck = transferRepository.findByIdempotencyKey(idempotencyKey)
-    if (recheck != null) throw DuplicateTransferException()
-    // 이체 처리
-}
-```
+이체 API는 3-Tier 멱등성 보장:
+1. **Memory Check**: FailureRegistry (가장 빠름)
+2. **DB Fast Path**: 트랜잭션 밖 조회 (성능 최적화)
+3. **DB Double-Check**: 트랜잭션 내 재확인 (Race Condition 방지)
 
 ### 3. Deadlock Prevention
 
-이체 시 두 계좌를 동시에 잠그는 과정에서 발생할 수 있는 교착 상태를 방지합니다.
-
-**정렬 기반 잠금 순서 보장**
-
-```kotlin
-// 항상 작은 ID → 큰 ID 순서로 잠금
-val (firstId, secondId) = if (fromAccountId < toAccountId) {
-    fromAccountId to toAccountId
-} else {
-    toAccountId to fromAccountId
-}
-
-val first = accountRepository.findByIdForUpdate(firstId)
-val second = accountRepository.findByIdForUpdate(secondId)
-```
-
+계좌 ID 정렬로 교착상태 원천 차단:
 - 모든 트랜잭션이 동일한 순서로 잠금 획득
-- 순환 대기 상태 원천 차단
+- `SELECT ... FOR UPDATE` 순서 보장
+
+### 4. Memory-First Async Persistence
+
+이체 실패 시:
+1. 메모리에 즉시 등록 (~1ms)
+2. 비동기 DB 영속화 (Fire-and-Forget)
+3. 클라이언트 빠른 응답 (~50ms)
 
 ## 테스트
 
 ### 실행
 
-테스트는 **Testcontainers**를 사용합니다. Docker만 실행 중이면 테스트가 자동으로 PostgreSQL 컨테이너를 시작합니다.
-
 ```bash
-# 전제조건: Docker 실행 중이어야 함
-
-# 전체 테스트 실행
+# 전체 테스트
 ./gradlew test
 
-# 커버리지 리포트 생성 (HTML)
+# 커버리지 리포트
 ./gradlew koverHtmlReport
 # → build/reports/kover/html/index.html
 
@@ -760,80 +332,20 @@ val second = accountRepository.findByIdForUpdate(secondId)
 
 ### 커버리지
 
-- **현재 커버리지**: 93.53%
+- **현재**: 93.53%
 - **최소 요구사항**: 70%
-- **제외 대상**: Configuration 클래스, DTO, Entity
+- **총 테스트 파일**: 33개
 
-### 테스트 구성
+## 운영 가이드
 
-**총 33개 테스트 파일**
+본 서비스는 프로덕션 환경에서 다음을 지원합니다:
 
-| 계층 | 파일 수 | 설명 |
-|-----|--------|------|
-| Domain | 6 | Account, LedgerEntry, Transfer 단위/속성 테스트 |
-| Service | 12 | AccountService, TransferService 통합/동시성 테스트 |
-| Controller | 2 | AccountController, TransferController API 테스트 |
-| Persistence | 4 | Adapter 통합 테스트 |
-| Architecture | 6 | ArchUnit 기반 아키텍처 규칙 검증 |
-| Infrastructure | 2 | Security, Exception Handler 테스트 |
-| Support | 1 | AbstractIntegrationTest (Testcontainers 기반) |
+- **R2DBC Connection Pool**: 환경별 최적화된 풀 설정
+- **Timeout Configuration**: 모든 레이어의 타임아웃 설정
+- **Graceful Shutdown**: 진행 중인 요청 안전 완료
+- **Actuator & Health Check**: Kubernetes Probes 지원
 
-## 프로젝트 구조
-
-```
-account-ledger-service/
-├── src/
-│   ├── main/
-│   │   ├── kotlin/com/labs/ledger/
-│   │   │   ├── adapter/
-│   │   │   │   ├── in/web/
-│   │   │   │   │   ├── AccountController.kt
-│   │   │   │   │   ├── TransferController.kt
-│   │   │   │   │   ├── GlobalExceptionHandler.kt
-│   │   │   │   │   └── dto/
-│   │   │   │   └── out/persistence/
-│   │   │   │       ├── adapter/          # Persistence Adapters
-│   │   │   │       ├── entity/           # JPA/R2DBC Entities
-│   │   │   │       └── repository/       # Spring Data Repositories
-│   │   │   ├── application/
-│   │   │   │   ├── service/              # Use Case Implementations
-│   │   │   │   └── support/              # InMemoryFailureRegistry 등
-│   │   │   ├── domain/
-│   │   │   │   ├── model/                # Domain Models
-│   │   │   │   ├── port/                 # Input/Output Ports (Interfaces)
-│   │   │   │   └── exception/            # Domain Exceptions (7개)
-│   │   │   ├── infrastructure/
-│   │   │   │   ├── config/               # R2DBC, OpenAPI 등
-│   │   │   │   ├── security/             # JWT, SecurityConfig, Filters
-│   │   │   │   └── web/                  # RequestLoggingFilter 등
-│   │   │   └── LedgerApplication.kt      # Main Application
-│   │   └── resources/
-│   │       ├── application.yml
-│   │       ├── application-dev.yml
-│   │       ├── application-prod.yml
-│   │       ├── application-test.yml
-│   │       └── db/migration/             # Flyway SQL scripts
-│   └── test/
-│       └── kotlin/com/labs/ledger/
-│           ├── adapter/
-│           │   ├── in/web/               # Controller Tests (2)
-│           │   └── out/persistence/      # Persistence Tests (4)
-│           ├── application/
-│           │   ├── service/              # Service Tests (11)
-│           │   └── support/              # Support Tests (1)
-│           ├── architecture/             # ArchUnit Tests (6)
-│           ├── domain/model/             # Domain Tests (6)
-│           ├── infrastructure/security/  # Security Tests (2)
-│           └── support/                  # AbstractIntegrationTest
-├── docs/                                 # Architecture docs
-│   ├── SUSPEND_BEST_PRACTICES.md
-│   ├── SUSPEND_FOR_JAVA_DEVELOPERS.md
-│   └── POC_SUSPEND_VALIDATION_RESULT.md
-├── build.gradle.kts
-├── docker-compose.yml
-├── Dockerfile
-└── README.md
-```
+자세한 내용은 [Operations Guide](docs/OPERATIONS_GUIDE.md)를 참조하세요.
 
 ## 개발 이력
 
@@ -856,12 +368,18 @@ account-ledger-service/
 
 ## 문서
 
-### 아키텍처 가이드
-- **[Suspend 함수 분석 & Best Practice](docs/SUSPEND_BEST_PRACTICES.md)**: 프로젝트 내부 구현 상세 분석 (레이어별 Suspend 심층 분석, 트랜잭션 관리, Flow 처리 등)
-- **[Java 개발자를 위한 Suspend 가이드](docs/SUSPEND_FOR_JAVA_DEVELOPERS.md)**: Blocking I/O, CompletableFuture, Reactor와 비교하며 Kotlin Coroutines 빠르게 이해하기 (Virtual Threads 비교 포함)
+### 📚 사용자 가이드
+- **[Getting Started](docs/GETTING_STARTED.md)**: 환경 설정, Docker 실행, 프로젝트 구조
+- **[API Reference](docs/API_REFERENCE.md)**: REST API 상세 명세, 에러 코드
+- **[Authentication Guide](docs/AUTHENTICATION_GUIDE.md)**: JWT 인증, 토큰 발급
+- **[Operations Guide](docs/OPERATIONS_GUIDE.md)**: 운영 환경 설정, 모니터링
 
-### POC 및 연구
-- **[Suspend 함수 검증 POC 결과](docs/POC_SUSPEND_VALIDATION_RESULT.md)**: ArchUnit 기반 Continuation 파라미터 감지 방식 검증 결과 (100% 정확도)
+### 🏗️ 아키텍처 가이드
+- **[Suspend 함수 분석 & Best Practice](docs/SUSPEND_BEST_PRACTICES.md)**: 레이어별 Suspend 심층 분석, 트랜잭션 관리, Flow 처리
+- **[Java 개발자를 위한 Suspend 가이드](docs/SUSPEND_FOR_JAVA_DEVELOPERS.md)**: Blocking I/O, CompletableFuture, Reactor와 비교 (Virtual Threads 포함)
+
+### 🔬 POC 및 연구
+- **[Suspend 함수 검증 POC 결과](docs/POC_SUSPEND_VALIDATION_RESULT.md)**: ArchUnit 기반 Continuation 파라미터 감지 검증 (100% 정확도)
 
 ## 라이선스
 
@@ -869,7 +387,7 @@ account-ledger-service/
 
 ---
 
-**마지막 업데이트**: 2026-02-16
+**마지막 업데이트**: 2026-02-17
 **Spring Boot**: 3.4.13
 **커버리지**: 93.53%
 **테스트**: 33개

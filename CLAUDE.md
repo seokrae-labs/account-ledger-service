@@ -135,7 +135,10 @@ fun handle(e: DomainException) = when (e) {
 | 409 | DUPLICATE_TRANSFER | 중복 이체 |
 | 409 | OPTIMISTIC_LOCK_FAILED | 동시 수정 (재시도 필요) |
 
-**상세 API 문서**: `README.md` 참조 또는 `/docs/index.html` (Swagger UI)
+**상세 API 문서**:
+- **REST API 명세**: `docs/API_REFERENCE.md`
+- **Swagger UI**: http://localhost:8080/swagger-ui.html
+- **인증 가이드**: `docs/AUTHENTICATION_GUIDE.md`
 
 ## 🔧 코드 작성 가이드
 
@@ -189,8 +192,19 @@ override suspend fun findByAccountId(accountId: Long): List<LedgerEntry> {
 
 ## 📚 참고 문서
 
-- **Suspend Best Practices**: `docs/SUSPEND_BEST_PRACTICES.md`
-- **프로젝트 개요**: `README.md`
+### 사용자 가이드
+- **Getting Started**: `docs/GETTING_STARTED.md` - 환경 설정, Docker 실행
+- **API Reference**: `docs/API_REFERENCE.md` - REST API 상세 명세
+- **Authentication**: `docs/AUTHENTICATION_GUIDE.md` - JWT 인증, 토큰 발급
+- **Operations**: `docs/OPERATIONS_GUIDE.md` - 운영 환경 설정
+
+### 아키텍처 가이드
+- **Suspend Best Practices**: `docs/SUSPEND_BEST_PRACTICES.md` - 레이어별 Suspend 분석
+- **Suspend for Java**: `docs/SUSPEND_FOR_JAVA_DEVELOPERS.md` - Java 개발자용 가이드
+- **POC 결과**: `docs/POC_SUSPEND_VALIDATION_RESULT.md` - ArchUnit 검증
+
+### 기타
+- **프로젝트 개요**: `README.md` - 시퀀스 다이어그램 포함
 - **GitHub Issues**: https://github.com/seokrae-labs/account-ledger-service/issues
 
 ## 🚨 중요 원칙
@@ -225,6 +239,6 @@ suspend fun save(): Account = repository.save(account)
 
 ---
 
-**마지막 업데이트**: 2026-02-14
+**마지막 업데이트**: 2026-02-17
 **커버리지**: 93.53%
 **상태**: ✅ 전체 개발 완료
