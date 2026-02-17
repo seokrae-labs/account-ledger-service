@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient
 import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.reactive.server.WebTestClient
 
@@ -106,5 +107,76 @@ class SecurityConfigIntegrationTest : AbstractIntegrationTest() {
             .uri("/api/dev/nonexistent")
             .exchange()
             .expectStatus().isNotFound // 404 = 인증 통과 + 경로 없음
+    }
+
+    // ============================================================
+    // POST /api/transfers 인증 강제 테스트
+    // ============================================================
+
+    @Test
+    fun `POST 이체 엔드포인트는 인증 없이 접근 시 401을 반환한다`() {
+        webTestClient.post()
+            .uri("/api/transfers")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", "test-key-no-auth")
+            .bodyValue("""{"fromAccountId":1,"toAccountId":2,"amount":"100.00"}""")
+            .exchange()
+            .expectStatus().isUnauthorized
+    }
+
+    @Test
+    fun `POST 이체 엔드포인트는 만료된 토큰으로 접근 시 401을 반환한다`() {
+        // given: 음수 만료 시간으로 즉시 만료 토큰 생성
+        val expiredProperties = SecurityProperties(
+            jwtSecret = "test-secret-key-minimum-256-bits-required-for-hs256-algorithm",
+            jwtExpirationMs = -1000
+        )
+        val expiredToken = JwtTokenProvider(expiredProperties).generateToken("user123")
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer $expiredToken")
+            .header("Idempotency-Key", "test-key-expired")
+            .bodyValue("""{"fromAccountId":1,"toAccountId":2,"amount":"100.00"}""")
+            .exchange()
+            .expectStatus().isUnauthorized
+    }
+
+    @Test
+    fun `POST 이체 엔드포인트는 변조된 서명의 토큰으로 접근 시 401을 반환한다`() {
+        // given: 다른 시크릿으로 서명한 토큰
+        val otherProperties = SecurityProperties(
+            jwtSecret = "another-secret-key-minimum-256-bits-required-for-hs256-algorithm",
+            jwtExpirationMs = 3600000
+        )
+        val tamperedToken = JwtTokenProvider(otherProperties).generateToken("user123")
+
+        // when & then
+        webTestClient.post()
+            .uri("/api/transfers")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer $tamperedToken")
+            .header("Idempotency-Key", "test-key-tampered")
+            .bodyValue("""{"fromAccountId":1,"toAccountId":2,"amount":"100.00"}""")
+            .exchange()
+            .expectStatus().isUnauthorized
+    }
+
+    @Test
+    fun `POST 이체 엔드포인트는 유효한 토큰으로 인증을 통과한다`() {
+        // given: 유효한 JWT 토큰
+        val token = jwtTokenProvider.generateToken("user123", "testuser")
+
+        // when & then: 401이 아닌 응답 (404, 400, 409 등) → 인증 통과를 의미
+        webTestClient.post()
+            .uri("/api/transfers")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+            .header("Idempotency-Key", "test-key-valid-auth")
+            .bodyValue("""{"fromAccountId":1,"toAccountId":2,"amount":"100.00"}""")
+            .exchange()
+            .expectStatus().value { status -> assert(status != 401) { "Expected non-401 but got $status" } }
     }
 }
