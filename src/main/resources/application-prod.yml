@@ -46,6 +46,9 @@ management:
       show-details: never  # Hide sensitive details in production
 
 logging:
+  structured:
+    format:
+      console: ecs  # Spring Boot 3.4 native JSON (ECS 형식, ELK/OpenSearch 연동)
   level:
     com.labs.ledger: INFO
     io.r2dbc.postgresql: WARN
