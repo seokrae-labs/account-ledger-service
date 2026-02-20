@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ledger": {
+      "command": "uv",
+      "args": ["run", "mcp_server.py"],
+      "env": {
+        "LEDGER_PROJECT_DIR": "."
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 package com.labs.ledger.adapter.`in`.web
 
 import org.springframework.restdocs.webtestclient.WebTestClientRestDocumentation.document
-import com.labs.ledger.RestDocsConfiguration
+import com.labs.ledger.support.RestDocsConfiguration
 import com.labs.ledger.support.TestSecurityConfig
 import com.labs.ledger.domain.exception.AccountNotFoundException
 import com.labs.ledger.domain.exception.InvalidAccountStatusException
