@@ -1,4 +1,4 @@
-package com.labs.ledger
+package com.labs.ledger.support
 
 import org.springframework.boot.test.autoconfigure.restdocs.RestDocsWebTestClientConfigurationCustomizer
 import org.springframework.boot.test.context.TestConfiguration

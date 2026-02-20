@@ -41,3 +41,18 @@ out/
 
 ### Environment Variables ###
 .env
+
+### Claude Code (Local Dev Tools) ###
+.claude/
+.mcp.json
+mcp_server.py
+
+### Agent Harness ###
+agent-harness/logs/
+agent-harness/.env
+agent-harness/__pycache__/
+agent-harness/**/__pycache__/
+agent-harness/.venv/
+agent-harness/dist/
+agent-harness/src/*.egg-info/
+agent-harness/.pytest_cache/
